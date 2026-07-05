@@ -1,0 +1,7 @@
+node_modules/
+dist/
+client/dist/
+server/__pycache__/
+server/app/__pycache__/
+.env
+.DS_Store

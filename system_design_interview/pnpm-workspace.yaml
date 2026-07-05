@@ -1,0 +1,6 @@
+packages:
+  - "client"
+  - "server"
+  - "infinite-canvas"
+allowBuilds:
+  esbuild: true

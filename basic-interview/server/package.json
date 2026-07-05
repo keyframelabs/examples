@@ -1,0 +1,23 @@
+{
+  "name": "@kfl-interview/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m uvicorn app.main:app --host 127.0.0.1 --port ${PORT:-8787} --reload",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@kfl-interview/shared": "workspace:*",
+    "dotenv": "^17.0.1",
+    "mammoth": "^1.9.1",
+    "openai": "^5.8.2",
+    "pdf-parse": "^1.1.1",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5",
+    "tsx": "^4.20.3"
+  }
+}

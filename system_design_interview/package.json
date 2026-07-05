@@ -1,0 +1,18 @@
+{
+  "name": "kfl-system-design-interview-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c cyan,green \"pnpm --filter @kfl-system-design/server dev\" \"pnpm --filter @kfl-system-design/client dev\"",
+    "build": "pnpm typecheck && pnpm --filter @kfl-system-design/client build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
