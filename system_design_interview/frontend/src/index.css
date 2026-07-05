@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/instrument-serif";
+
+:root {
+  --background: oklch(0.9643 0.0070 88.6428);
+  --foreground: oklch(0.2166 0.0057 106.8685);
+  --card: oklch(0.9820 0.0041 91.4458);
+  --card-foreground: oklch(0.2166 0.0057 106.8685);
+  --popover: oklch(0.9820 0.0041 91.4458);
+  --popover-foreground: oklch(0.2166 0.0057 106.8685);
+  --primary: oklch(0.2166 0.0057 106.8685);
+  --primary-foreground: oklch(0.9643 0.0070 88.6428);
+  --secondary: oklch(0.9462 0.0111 89.7242);
+  --secondary-foreground: oklch(0.3491 0.0125 87.5564);
+  --muted: oklch(0.9462 0.0111 89.7242);
+  --muted-foreground: oklch(0.5286 0.0146 86.8730);
+  --accent: oklch(0.9310 0.0119 133.3805);
+  --accent-foreground: oklch(0.4489 0.0325 145.0094);
+  --destructive: oklch(0.3958 0.1331 25.7230);
+  --destructive-foreground: oklch(0.9643 0.0070 88.6428);
+  --border: oklch(0.9128 0 0);
+  --input: oklch(0.9128 0 0);
+  --ring: oklch(0.2166 0.0057 106.8685);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 0.025rem;
+  --shadow-2xs: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 0.50);
+  --shadow-xs: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 0.50);
+  --shadow-sm: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 1.00), 2.5px 1px 2px -1px hsl(0 0% 1.9608% / 1.00);
+  --shadow: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 1.00), 2.5px 1px 2px -1px hsl(0 0% 1.9608% / 1.00);
+  --shadow-md: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 1.00), 2.5px 2px 4px -1px hsl(0 0% 1.9608% / 1.00);
+  --shadow-lg: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 1.00), 2.5px 4px 6px -1px hsl(0 0% 1.9608% / 1.00);
+  --shadow-xl: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 1.00), 2.5px 8px 10px -1px hsl(0 0% 1.9608% / 1.00);
+  --shadow-2xl: 2.5px 2.5px 0px 0px hsl(0 0% 1.9608% / 2.50);
+  --tracking-normal: -0.01em;
+  --spacing: 0.25rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

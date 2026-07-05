@@ -1,0 +1,20 @@
+{
+  "name": "kfl-system-design-interview-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "concurrently -k -n server,frontend -c cyan,green \"uv run uvicorn app.main:app --app-dir server --host localhost --port ${PORT:-8788}\" \"VITE_API_BASE_URL=http://localhost:${PORT:-8788} pnpm --filter @kfl-system-design/frontend dev\"",
+    "build": "pnpm interview:validate && pnpm typecheck && pnpm --filter @kfl-system-design/frontend build",
+    "test": "pnpm interview:validate && pnpm -r --if-present test && uv run pytest",
+    "interview:validate": "uv run python -m server.app.interviews.interview_loader",
+    "server:test": "uv run pytest",
+    "server:lint": "uv run ruff check server",
+    "server:format:check": "uv run ruff format --check server",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
