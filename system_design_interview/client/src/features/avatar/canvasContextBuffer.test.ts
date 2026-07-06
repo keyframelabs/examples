@@ -145,6 +145,46 @@ describe("createCanvasContextBuffer", () => {
     buffer.stop();
   });
 
+  it("requeues a reverted canvas after an async send resolves", async () => {
+    vi.useFakeTimers();
+    const resolves: Array<() => void> = [];
+    const sender = vi.fn(() => new Promise<void>((resolve) => {
+      resolves.push(resolve);
+    }));
+    const buffer = createCanvasContextBuffer(sender);
+
+    buffer.start();
+    buffer.push("Canvas A");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sender).toHaveBeenCalledTimes(1);
+
+    resolves[0]?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
+
+    buffer.push("Canvas B");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sender).toHaveBeenCalledTimes(2);
+    expect(sender).toHaveBeenNthCalledWith(2, "Canvas B");
+
+    buffer.push("Canvas A");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
+
+    resolves[1]?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(800);
+
+    expect(sender).toHaveBeenCalledTimes(3);
+    expect(sender).toHaveBeenNthCalledWith(3, "Canvas A");
+
+    resolves[2]?.();
+    await vi.advanceTimersByTimeAsync(0);
+    buffer.stop();
+  });
+
   it("retries the same summary after a send failure", async () => {
     vi.useFakeTimers();
     const sender = vi.fn()

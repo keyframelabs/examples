@@ -103,6 +103,16 @@ export function createCanvasContextBuffer(
       return;
     }
 
+    syncPendingWithLatestText();
+    emitStatus();
+  }
+
+  function syncPendingWithLatestText(): void {
+    if (latestText === undefined) {
+      return;
+    }
+
+    const nextHash = hashText(latestText);
     observedHash = nextHash;
     if (nextHash === lastSentHash) {
       pendingText = undefined;
@@ -113,7 +123,6 @@ export function createCanvasContextBuffer(
       pendingHash = nextHash;
       error = null;
     }
-    emitStatus();
   }
 
   async function sendPendingText(): Promise<void> {
@@ -131,11 +140,7 @@ export function createCanvasContextBuffer(
       lastSentHash = hashToSend;
       lastSentAt = now();
       error = null;
-
-      if (pendingHash === hashToSend) {
-        pendingText = undefined;
-        pendingHash = null;
-      }
+      syncPendingWithLatestText();
     } catch (err) {
       error = formatError(err);
     } finally {
