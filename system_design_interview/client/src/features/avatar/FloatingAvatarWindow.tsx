@@ -53,8 +53,8 @@ type DragState = {
   startPosition: Position;
 };
 
-const PANEL_WIDTH = 360;
-const PANEL_HEIGHT = 394;
+const PANEL_WIDTH = 392;
+const PANEL_HEIGHT = 500;
 const MINIMIZED_WIDTH = 260;
 const MINIMIZED_HEIGHT = 56;
 
@@ -421,7 +421,7 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
     >
       <section
         ref={panelRef}
-        className={`${minimized ? "w-[min(260px,calc(100vw-24px))]" : "w-[min(360px,calc(100vw-24px))]"} overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-900 shadow-float`}
+        className={`${minimized ? "w-[min(260px,calc(100vw-24px))]" : "w-[min(392px,calc(100vw-24px))]"} overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-900 shadow-float`}
       >
         <div
           className="flex h-12 cursor-move touch-none items-center gap-2 border-b border-slate-200 bg-slate-950 px-3 text-white"
@@ -452,7 +452,7 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
 
         {!minimized ? (
           <div className="grid gap-3 p-3">
-            <div className="relative aspect-[16/10] min-h-[210px] overflow-hidden rounded-md bg-[#101418]">
+            <div className="relative aspect-square min-h-[300px] overflow-hidden rounded-md bg-[#101418]">
               <div ref={containerRef} className="absolute inset-0" />
               {!isConnected ? (
                 <div className="absolute inset-0 grid place-items-center px-5 text-center">
