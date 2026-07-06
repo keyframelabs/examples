@@ -1,5 +1,3 @@
-const MAX_CONTEXT_CHARS = 5500;
-
 interface CanvasContextualUpdateOptions {
   version?: number;
 }
@@ -8,7 +6,7 @@ export function buildCanvasContextualUpdate(
   canvasText: string,
   options: CanvasContextualUpdateOptions = {}
 ): string {
-  const text = compact(canvasText, MAX_CONTEXT_CHARS);
+  const text = normalizeCanvasText(canvasText);
   const versionLine =
     options.version === undefined
       ? undefined
@@ -23,13 +21,6 @@ export function buildCanvasContextualUpdate(
   ].filter(Boolean).join("\n");
 }
 
-function compact(value: string, maxLength: number): string {
-  const normalized = value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  const clipped = normalized.slice(0, maxLength - 3);
-  const boundary = clipped.lastIndexOf("\n");
-  return `${clipped.slice(0, boundary > 400 ? boundary : clipped.length).trimEnd()}...`;
+function normalizeCanvasText(value: string): string {
+  return value.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
