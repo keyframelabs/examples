@@ -192,6 +192,32 @@ describe("createCanvasContextBuffer", () => {
     buffer.stop();
   });
 
+  it("clears a send error after reverting to the last successful summary", async () => {
+    vi.useFakeTimers();
+    const sender = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("provider busy"));
+    const buffer = createCanvasContextBuffer(sender);
+
+    buffer.start();
+    buffer.push("Canvas A");
+    await vi.advanceTimersByTimeAsync(1000);
+
+    buffer.push("Canvas B");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
+    expect(buffer.getStatus().error).toBe("provider busy");
+
+    buffer.push("Canvas A");
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(sender).toHaveBeenCalledTimes(2);
+    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
+    expect(buffer.getStatus().error).toBeNull();
+
+    buffer.stop();
+  });
+
   it("clears both timers on stop", async () => {
     vi.useFakeTimers();
     const sender = vi.fn();

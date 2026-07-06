@@ -107,6 +107,7 @@ export function createCanvasContextBuffer(
     if (nextHash === lastSentHash) {
       pendingText = undefined;
       pendingHash = null;
+      error = null;
     } else {
       pendingText = latestText;
       pendingHash = nextHash;
