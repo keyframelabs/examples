@@ -104,7 +104,7 @@ export function FloatingAvatarWindow({
 
   useEffect(() => {
     onCanvasSyncStatusChange?.({
-      isReady: contextSyncReady || isConnecting || isConnected,
+      isReady: contextSyncReady,
       isSending: contextSending,
       pendingEdits: pendingContextEdits,
       lastSentAt: lastContextSentAt,
@@ -115,8 +115,6 @@ export function FloatingAvatarWindow({
     contextSending,
     contextSyncError,
     contextSyncReady,
-    isConnected,
-    isConnecting,
     lastContextSentAt,
     lastContextVersion,
     onCanvasSyncStatusChange,
