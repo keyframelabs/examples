@@ -46,48 +46,29 @@ export function App() {
 }
 
 function CanvasSyncIndicator({ status }: { status: CanvasSyncStatus }) {
-  const shouldShow =
-    status.isReady ||
-    status.isSending ||
-    status.pendingEdits > 0 ||
-    status.lastSentAt !== null ||
-    status.error !== null;
-
-  if (!shouldShow) {
+  if (!status.isReady) {
     return null;
   }
 
-  const primaryText = getCanvasSyncPrimaryText(status);
-  const dotClassName = status.error
-    ? "bg-red-500"
-    : status.pendingEdits > 0
-      ? "bg-amber-500"
-      : status.isSending || !status.lastSentAt
-      ? "bg-cyan-500"
-      : "bg-teal-600";
-
   return (
-    <div className="pointer-events-none absolute bottom-4 right-4 z-30 max-w-[calc(100vw-2rem)] rounded-md border border-slate-200/80 bg-white/85 px-2.5 py-1.5 text-xs text-slate-600 shadow-sm backdrop-blur-sm">
-      <div className="flex items-center gap-1.5">
-        <span className={`size-1.5 rounded-full ${dotClassName}`} />
-        <span className="font-medium text-slate-700">{primaryText}</span>
-      </div>
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 inline-flex h-[42px] items-center rounded-lg border border-slate-200 bg-white/95 px-3 text-xs font-medium text-slate-700 shadow-toolbar backdrop-blur"
+    >
+      {getCanvasSyncPrimaryText(status)}
     </div>
   );
 }
 
 function getCanvasSyncPrimaryText(status: CanvasSyncStatus): string {
-  if (status.error) {
-    return "Canvas send issue";
+  if (
+    status.lastSentAt !== null &&
+    !status.isSending &&
+    status.pendingEdits === 0 &&
+    !status.error
+  ) {
+    return "Synced";
   }
 
-  if (status.pendingEdits > 0) {
-    return "Canvas pending";
-  }
-
-  if (status.isSending || !status.lastSentAt) {
-    return "Syncing";
-  }
-
-  return "Synced";
+  return "Syncing";
 }
