@@ -4,9 +4,9 @@ import { SystemDesignCanvas } from "@kfl-system-design/infinite-canvas";
 import {
   FloatingAvatarWindow,
   type CanvasSyncStatus
-} from "./features/avatar/FloatingAvatarWindow";
-import { getCanvasSyncPrimaryText } from "./features/avatar/canvasSyncStatusLabel";
-import { initialSystemDesignCanvas } from "./features/interview/initialCanvas";
+} from "./components/avatar/FloatingAvatarWindow";
+import { getCanvasSyncPrimaryText } from "./components/avatar/canvasSyncStatusLabel";
+import { initialSystemDesignCanvas } from "./components/interview/initialCanvas";
 
 const initialCanvasSyncStatus: CanvasSyncStatus = {
   isReady: false,
