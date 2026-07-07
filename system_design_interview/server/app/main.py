@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = ROOT_DIR / "server"
-PROVIDER_REQUEST_SCRIPT = SERVER_DIR / "app" / "provider_request.mjs"
+PROVIDER_REQUEST_TIMEOUT_SECONDS = 35
 DEFAULT_CLIENT_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
@@ -205,39 +205,42 @@ def provider_json(
     payload: dict[str, Any] | None,
     error_prefix: str,
 ) -> dict[str, Any]:
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers=headers,
+        method=method,
+    )
+
     try:
-        completed = subprocess.run(
-            ["node", str(PROVIDER_REQUEST_SCRIPT)],
-            input=json.dumps({
-                "method": method,
-                "url": url,
-                "headers": headers,
-                "payload": payload,
-            }),
-            text=True,
-            capture_output=True,
-            timeout=35,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
+        with urllib.request.urlopen(request, timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as response:
+            status = response.status
+            status_text = response.reason
+            body = parse_provider_body(response.read(), response.headers)
+            ok = 200 <= status < 300
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        status_text = exc.reason
+        body = parse_provider_body(exc.read(), exc.headers)
+        ok = False
+    except (TimeoutError, socket.timeout) as exc:
         raise HTTPException(status_code=504, detail=f"{error_prefix}: provider request timed out.") from exc
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise HTTPException(
+                status_code=504,
+                detail=f"{error_prefix}: provider request timed out.",
+            ) from exc
 
-    if completed.returncode != 0:
-        message = completed.stderr.strip() or "provider request failed."
-        raise HTTPException(status_code=502, detail=f"{error_prefix}: {message}")
+        message = str(exc.reason or exc) or "provider request failed."
+        raise HTTPException(status_code=502, detail=f"{error_prefix}: {message}") from exc
 
-    try:
-        response = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=502, detail=f"{error_prefix}: helper returned non-JSON.") from exc
-
-    if not isinstance(response, dict):
-        raise HTTPException(status_code=502, detail=f"{error_prefix}: helper returned unexpected JSON.")
-
-    status = response.get("status")
-    body = response.get("body")
-    if not response.get("ok"):
-        detail = extract_provider_error(body, str(response.get("statusText") or "provider error"))
+    if not ok:
+        detail = extract_provider_error(body, str(status_text or "provider error"))
         raise HTTPException(
             status_code=status if isinstance(status, int) else 502,
             detail=f"{error_prefix}: {detail}",
@@ -250,6 +253,21 @@ def provider_json(
         return body
 
     raise HTTPException(status_code=502, detail=f"{error_prefix}: provider returned unexpected JSON.")
+
+
+def parse_provider_body(raw_body: bytes, headers: Any) -> Any:
+    if not raw_body:
+        return None
+
+    charset = headers.get_content_charset() if hasattr(headers, "get_content_charset") else None
+    text = raw_body.decode(charset or "utf-8", errors="replace")
+    if not text:
+        return None
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 def extract_provider_error(body: Any, fallback: str) -> str:
