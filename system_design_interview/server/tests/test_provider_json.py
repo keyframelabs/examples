@@ -64,8 +64,10 @@ def test_provider_json_sends_payload_and_returns_json(monkeypatch: pytest.Monkey
         "method": "POST",
         "url": "https://provider.test/sessions",
         "headers": {
+            "accept": "*/*",
             "authorization": "Bearer token",
             "content-type": "application/json",
+            "user-agent": "undici",
         },
         "payload": {"persona_slug": "public:test"},
         "timeout": main.PROVIDER_REQUEST_TIMEOUT_SECONDS,

@@ -17,6 +17,10 @@ from fastapi.responses import JSONResponse
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = ROOT_DIR / "server"
 PROVIDER_REQUEST_TIMEOUT_SECONDS = 35
+DEFAULT_PROVIDER_HEADERS = {
+    "Accept": "*/*",
+    "User-Agent": "undici",
+}
 DEFAULT_CLIENT_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
@@ -212,7 +216,7 @@ def provider_json(
     request = urllib.request.Request(
         url,
         data=data,
-        headers=headers,
+        headers=provider_request_headers(headers),
         method=method,
     )
 
@@ -253,6 +257,18 @@ def provider_json(
         return body
 
     raise HTTPException(status_code=502, detail=f"{error_prefix}: provider returned unexpected JSON.")
+
+
+def provider_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    merged = DEFAULT_PROVIDER_HEADERS.copy()
+    header_names = {name.lower() for name in headers}
+
+    for name in list(merged):
+        if name.lower() in header_names:
+            del merged[name]
+
+    merged.update(headers)
+    return merged
 
 
 def parse_provider_body(raw_body: bytes, headers: Any) -> Any:
