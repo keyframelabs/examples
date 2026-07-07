@@ -53,7 +53,7 @@ function CanvasSyncIndicator({ status }: { status: CanvasSyncStatus }) {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed bottom-4 right-4 z-50 inline-flex h-[42px] items-center rounded-lg border border-slate-200 bg-white/95 px-3 text-xs font-medium text-slate-700 shadow-toolbar backdrop-blur"
+      className="pointer-events-none fixed bottom-4 right-4 z-30 inline-flex h-[42px] items-center rounded-lg border border-slate-200 bg-white/95 px-3 text-xs font-medium text-slate-700 shadow-toolbar backdrop-blur"
     >
       {getCanvasSyncPrimaryText(status)}
     </div>
