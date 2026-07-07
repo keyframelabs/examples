@@ -9,9 +9,15 @@ from app import main
 
 
 class StubResponse:
-    def __init__(self, *, body: dict[str, Any]) -> None:
-        self.status_code = 200
-        self.reason_phrase = "OK"
+    def __init__(
+        self,
+        *,
+        body: dict[str, Any],
+        status_code: int = 200,
+        reason_phrase: str = "OK",
+    ) -> None:
+        self.status_code = status_code
+        self.reason_phrase = reason_phrase
         self.content = b"json"
         self._body = body
 
@@ -74,7 +80,7 @@ def test_create_session_endpoint_uses_keyframe_and_elevenlabs_provider_flow(
         async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
             self.requests.append({"method": method, "url": url, "kwargs": kwargs})
             if method == "PATCH":
-                raise AssertionError("session creation must not update persistent ElevenLabs agent settings")
+                return StubResponse(body={})
             if "keyframelabs" in url:
                 return StubResponse(
                     body={
@@ -131,7 +137,9 @@ def test_create_session_endpoint_uses_keyframe_and_elevenlabs_provider_flow(
     }
 
     elevenlabs_request = next(
-        request for request in RecordingLifecycleClient.requests if "elevenlabs" in request["url"]
+        request
+        for request in RecordingLifecycleClient.requests
+        if request["method"] == "GET" and "elevenlabs" in request["url"]
     )
     assert elevenlabs_request == {
         "method": "GET",
@@ -144,6 +152,61 @@ def test_create_session_endpoint_uses_keyframe_and_elevenlabs_provider_flow(
             },
         },
     }
+
+    agent_update_request = next(
+        request for request in RecordingLifecycleClient.requests if request["method"] == "PATCH"
+    )
+    assert agent_update_request == {
+        "method": "PATCH",
+        "url": "https://api.elevenlabs.io/v1/convai/agents/agent_123",
+        "kwargs": {
+            "headers": {
+                "Content-Type": "application/json",
+                "xi-api-key": "eleven-key",
+            },
+            "json": main.build_elevenlabs_agent_update_payload(),
+        },
+    }
+    update_index = RecordingLifecycleClient.requests.index(agent_update_request)
+    assert update_index < RecordingLifecycleClient.requests.index(keyframe_request)
+    assert update_index < RecordingLifecycleClient.requests.index(elevenlabs_request)
+
+
+def test_create_session_stops_when_elevenlabs_agent_update_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
+    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
+    main.get_settings.cache_clear()
+
+    class FailingAgentUpdateClient:
+        requests: list[dict[str, Any]] = []
+
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> "FailingAgentUpdateClient":
+            return self
+
+        async def __aexit__(self, *_args: Any) -> None:
+            return None
+
+        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
+            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
+            if method != "PATCH":
+                raise AssertionError("provider credentials must not be created after the prompt update fails")
+            return StubResponse(body={"detail": "agent update denied"}, status_code=403, reason_phrase="Forbidden")
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", FailingAgentUpdateClient)
+
+    with TestClient(main.app) as client:
+        response = client.post("/api/session")
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "ElevenLabs agent update failed: agent update denied"}
+    assert len(FailingAgentUpdateClient.requests) == 1
+    assert FailingAgentUpdateClient.requests[0]["method"] == "PATCH"
 
 
 def test_create_session_endpoint_reports_missing_required_settings() -> None:

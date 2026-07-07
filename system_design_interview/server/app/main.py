@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional, TypeVar
+from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -15,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .interview_packets import DEFAULT_INTERVIEW_PACKET_ID, InterviewPacket, get_interview_packet
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env",)
@@ -152,6 +155,9 @@ async def create_session() -> LiveSessionResponse:
     elevenlabs_api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
     elevenlabs_agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
     client = get_provider_http_client()
+    packet = get_interview_packet(DEFAULT_INTERVIEW_PACKET_ID)
+
+    await update_elevenlabs_agent(client, elevenlabs_api_key, elevenlabs_agent_id, packet, settings)
 
     session_details, signed_url = await asyncio.gather(
         create_keyframe_session(client, keyframe_api_key, settings),
@@ -222,6 +228,42 @@ async def get_elevenlabs_signed_url(
     )
 
     return validate_provider_model(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
+
+
+async def update_elevenlabs_agent(
+    client: httpx.AsyncClient,
+    api_key: str,
+    agent_id: str,
+    packet: InterviewPacket,
+    settings: Settings | None = None,
+) -> None:
+    settings = settings or get_settings()
+    await provider_json(
+        client,
+        "PATCH",
+        f"{settings.elevenlabs_api_base_url}/v1/convai/agents/{quote(agent_id, safe='')}",
+        {
+            "Content-Type": "application/json",
+            "xi-api-key": api_key,
+        },
+        build_elevenlabs_agent_update_payload(packet),
+        "ElevenLabs agent update failed",
+    )
+
+
+def build_elevenlabs_agent_update_payload(packet: InterviewPacket | None = None) -> dict[str, Any]:
+    selected_packet = packet or get_interview_packet(DEFAULT_INTERVIEW_PACKET_ID)
+    return {
+        "conversation_config": {
+            "agent": {
+                "first_message": selected_packet.first_message,
+                "disable_first_message_interruptions": True,
+                "prompt": {
+                    "prompt": selected_packet.prompt,
+                },
+            }
+        }
+    }
 
 
 async def provider_json(
