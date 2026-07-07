@@ -3,13 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import socket
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,10 +14,6 @@ from fastapi.responses import JSONResponse
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SERVER_DIR = ROOT_DIR / "server"
 PROVIDER_REQUEST_TIMEOUT_SECONDS = 35
-DEFAULT_PROVIDER_HEADERS = {
-    "Accept": "*/*",
-    "User-Agent": "undici",
-}
 DEFAULT_CLIENT_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
@@ -114,14 +107,10 @@ async def create_session() -> dict[str, Any]:
 
 async def create_keyframe_session(api_key: str) -> dict[str, Any]:
     persona_slug = os.environ.get("KEYFRAME_PERSONA_SLUG", "public:lyra_persona-1.5-live")
-    body = await asyncio.to_thread(
-        provider_json,
+    body = await provider_json(
         "POST",
         "https://api.keyframelabs.com/v1/sessions",
-        {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        {"Authorization": f"Bearer {api_key}"},
         {"persona_slug": persona_slug},
         "Keyframe session creation failed",
     )
@@ -135,17 +124,16 @@ async def create_keyframe_session(api_key: str) -> dict[str, Any]:
 
 async def get_elevenlabs_signed_url(api_key: str, agent_id: str) -> dict[str, Any]:
     base_url = elevenlabs_api_base_url()
-    query = urllib.parse.urlencode({
-        "agent_id": agent_id,
-        "include_conversation_id": "true",
-    })
-    body = await asyncio.to_thread(
-        provider_json,
+    body = await provider_json(
         "GET",
-        f"{base_url}/v1/convai/conversation/get-signed-url?{query}",
+        f"{base_url}/v1/convai/conversation/get-signed-url",
         {"xi-api-key": api_key},
         None,
         "ElevenLabs signed URL request failed",
+        params={
+            "agent_id": agent_id,
+            "include_conversation_id": "true",
+        },
     )
 
     if not isinstance(body.get("signed_url"), str):
@@ -156,14 +144,12 @@ async def get_elevenlabs_signed_url(api_key: str, agent_id: str) -> dict[str, An
 
 async def update_elevenlabs_agent(api_key: str, agent_id: str) -> None:
     base_url = elevenlabs_api_base_url()
-    await asyncio.to_thread(
-        provider_json,
+    base = httpx.URL(base_url)
+    agent_url = base.copy_with(path=f"{base.path.rstrip('/')}/v1/convai/agents/{agent_id}")
+    await provider_json(
         "PATCH",
-        f"{base_url}/v1/convai/agents/{urllib.parse.quote(agent_id)}",
-        {
-            "Content-Type": "application/json",
-            "xi-api-key": api_key,
-        },
+        agent_url,
+        {"xi-api-key": api_key},
         build_elevenlabs_agent_update_payload(),
         "ElevenLabs agent update failed",
     )
@@ -202,51 +188,37 @@ def build_system_design_interviewer_prompt() -> str:
     ])
 
 
-def provider_json(
+async def provider_json(
     method: str,
-    url: str,
+    url: str | httpx.URL,
     headers: dict[str, str],
     payload: dict[str, Any] | None,
     error_prefix: str,
+    *,
+    params: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    data = None
-    if payload is not None:
-        data = json.dumps(payload).encode("utf-8")
-
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers=provider_request_headers(headers),
-        method=method,
-    )
-
     try:
-        with urllib.request.urlopen(request, timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as response:
-            status = response.status
-            status_text = response.reason
-            body = parse_provider_body(response.read(), response.headers)
-            ok = 200 <= status < 300
-    except urllib.error.HTTPError as exc:
-        status = exc.code
-        status_text = exc.reason
-        body = parse_provider_body(exc.read(), exc.headers)
-        ok = False
-    except (TimeoutError, socket.timeout) as exc:
+        async with httpx.AsyncClient() as client:
+            response = await client.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=payload,
+                timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS,
+            )
+    except httpx.TimeoutException as exc:
         raise HTTPException(status_code=504, detail=f"{error_prefix}: provider request timed out.") from exc
-    except urllib.error.URLError as exc:
-        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
-            raise HTTPException(
-                status_code=504,
-                detail=f"{error_prefix}: provider request timed out.",
-            ) from exc
-
-        message = str(exc.reason or exc) or "provider request failed."
+    except httpx.RequestError as exc:
+        message = str(exc) or "provider request failed."
         raise HTTPException(status_code=502, detail=f"{error_prefix}: {message}") from exc
 
-    if not ok:
-        detail = extract_provider_error(body, str(status_text or "provider error"))
+    body = parse_provider_body(response)
+
+    if not response.is_success:
+        detail = extract_provider_error(body, response.reason_phrase or "provider error")
         raise HTTPException(
-            status_code=status if isinstance(status, int) else 502,
+            status_code=response.status_code,
             detail=f"{error_prefix}: {detail}",
         )
 
@@ -259,31 +231,14 @@ def provider_json(
     raise HTTPException(status_code=502, detail=f"{error_prefix}: provider returned unexpected JSON.")
 
 
-def provider_request_headers(headers: dict[str, str]) -> dict[str, str]:
-    merged = DEFAULT_PROVIDER_HEADERS.copy()
-    header_names = {name.lower() for name in headers}
-
-    for name in list(merged):
-        if name.lower() in header_names:
-            del merged[name]
-
-    merged.update(headers)
-    return merged
-
-
-def parse_provider_body(raw_body: bytes, headers: Any) -> Any:
-    if not raw_body:
-        return None
-
-    charset = headers.get_content_charset() if hasattr(headers, "get_content_charset") else None
-    text = raw_body.decode(charset or "utf-8", errors="replace")
-    if not text:
+def parse_provider_body(response: httpx.Response) -> Any:
+    if not response.content:
         return None
 
     try:
-        return json.loads(text)
+        return response.json()
     except json.JSONDecodeError:
-        return text
+        return response.text or None
 
 
 def extract_provider_error(body: Any, fallback: str) -> str:
