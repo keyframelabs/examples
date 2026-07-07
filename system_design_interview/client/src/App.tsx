@@ -5,6 +5,7 @@ import {
   FloatingAvatarWindow,
   type CanvasSyncStatus
 } from "./features/avatar/FloatingAvatarWindow";
+import { getCanvasSyncPrimaryText } from "./features/avatar/canvasSyncStatusLabel";
 import { initialSystemDesignCanvas } from "./features/interview/initialCanvas";
 
 const initialCanvasSyncStatus: CanvasSyncStatus = {
@@ -58,17 +59,4 @@ function CanvasSyncIndicator({ status }: { status: CanvasSyncStatus }) {
       {getCanvasSyncPrimaryText(status)}
     </div>
   );
-}
-
-function getCanvasSyncPrimaryText(status: CanvasSyncStatus): string {
-  if (
-    status.lastSentAt !== null &&
-    !status.isSending &&
-    status.pendingEdits === 0 &&
-    !status.error
-  ) {
-    return "Synced";
-  }
-
-  return "Syncing";
 }
