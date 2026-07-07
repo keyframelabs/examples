@@ -11,20 +11,27 @@ import {
   PhoneOff,
   RadioTower
 } from "lucide-react";
-import {
-  createContextualUpdateAdapter,
-  type CanvasState,
-  type ContextualUpdateAdapter
-} from "@kfl-system-design/infinite-canvas";
-
 import { createLiveSession } from "../../lib/api";
 import { ElevenLabsRuntimeAgent, type RuntimeAgentEventMap } from "../../lib/elevenlabs-runtime-agent";
 import type { LiveSessionResponse } from "../../types/live-session";
-import { buildCanvasContextualUpdate } from "./context";
+import {
+  createCanvasContextSync,
+  type CanvasContextSync,
+  type CanvasContextSyncStatus
+} from "./canvasContextSync";
 
 type FloatingAvatarWindowProps = {
-  canvasState: CanvasState;
   canvasText: string;
+  onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
+};
+
+export type CanvasSyncStatus = {
+  isReady: boolean;
+  isSending: boolean;
+  pendingEdits: number;
+  lastSentAt: number | null;
+  lastSentVersion: number;
+  error: string | null;
 };
 
 type ActiveBridge = {
@@ -36,7 +43,7 @@ type ActiveBridge = {
   processor: ScriptProcessorNode;
   videoElement: HTMLVideoElement;
   audioElement: HTMLAudioElement;
-  contextAdapter: ContextualUpdateAdapter;
+  contextSync: CanvasContextSync;
   closeState: {
     expected: boolean;
   };
@@ -58,52 +65,61 @@ const PANEL_HEIGHT = 500;
 const MINIMIZED_WIDTH = 260;
 const MINIMIZED_HEIGHT = 56;
 
-export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatarWindowProps) {
+export function FloatingAvatarWindow({
+  canvasText,
+  onCanvasSyncStatusChange
+}: FloatingAvatarWindowProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bridgeRef = useRef<ActiveBridge | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const latestCanvasStateRef = useRef(canvasState);
+  const latestCanvasTextRef = useRef(canvasText);
   const contextSyncReadyRef = useRef(false);
-  const contextUpdateVersionRef = useRef(0);
+  const lastLoggedContextVersionRef = useRef(0);
+  const lastLoggedContextErrorRef = useRef<string | null>(null);
   const [position, setPosition] = useState<Position>(() => initialPosition(PANEL_WIDTH, PANEL_HEIGHT));
   const [minimized, setMinimized] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
-  const [lastContextSentAt, setLastContextSentAt] = useState<Date | null>(null);
-  const [contextPending, setContextPending] = useState(false);
+  const [contextSyncReady, setContextSyncReady] = useState(false);
+  const [lastContextSentAt, setLastContextSentAt] = useState<number | null>(null);
+  const [lastContextVersion, setLastContextVersion] = useState(0);
+  const [contextSending, setContextSending] = useState(false);
+  const [pendingContextEdits, setPendingContextEdits] = useState(0);
+  const [contextSyncError, setContextSyncError] = useState<string | null>(null);
   const showConnectionLog = shouldShowConnectionLog();
+  const contextPending = contextSending || pendingContextEdits > 0;
 
   useEffect(() => {
-    latestCanvasStateRef.current = canvasState;
-    const adapter = bridgeRef.current?.contextAdapter;
-    if (adapter) {
-      adapter.push(canvasState);
-    }
-  }, [canvasState]);
-
-  useEffect(() => {
+    latestCanvasTextRef.current = canvasText;
     const bridge = bridgeRef.current;
     if (!bridge || !contextSyncReadyRef.current) {
       return;
     }
 
-    bridge.contextAdapter.push(latestCanvasStateRef.current);
-    setContextPending(true);
-    void bridge.contextAdapter
-      .flush(latestCanvasStateRef.current)
-      .then((sent) => {
-        if (!sent) {
-          setContextPending(false);
-        }
-      })
-      .catch((err: unknown) => {
-        logEvent(`Canvas context sync failed: ${formatError(err)}`);
-        setContextPending(false);
-      });
+    bridge.contextSync.push(canvasText);
   }, [canvasText]);
+
+  useEffect(() => {
+    onCanvasSyncStatusChange?.({
+      isReady: contextSyncReady,
+      isSending: contextSending,
+      pendingEdits: pendingContextEdits,
+      lastSentAt: lastContextSentAt,
+      lastSentVersion: lastContextVersion,
+      error: contextSyncError
+    });
+  }, [
+    contextSending,
+    contextSyncError,
+    contextSyncReady,
+    lastContextSentAt,
+    lastContextVersion,
+    onCanvasSyncStatusChange,
+    pendingContextEdits
+  ]);
 
   useEffect(() => {
     return () => {
@@ -137,12 +153,17 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
     setError(null);
     setEvents([]);
     setIsConnecting(true);
-    setContextPending(true);
+    setContextSyncError(null);
+    setLastContextSentAt(null);
+    setLastContextVersion(0);
+    setContextSending(false);
+    setPendingContextEdits(0);
+    lastLoggedContextVersionRef.current = 0;
+    lastLoggedContextErrorRef.current = null;
 
     try {
       await cleanupBridge();
-      contextSyncReadyRef.current = false;
-      contextUpdateVersionRef.current = 0;
+      setContextSyncReadyValue(false);
       const liveSession = await createLiveSession();
       const container = containerRef.current;
       if (!container) {
@@ -158,12 +179,11 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
       const agent = new ElevenLabsRuntimeAgent();
       const closeState = { expected: false };
       const personaSession = createPersonaSession(liveSession, videoElement, audioElement, closeState);
-      const contextAdapter = createContextualUpdateAdapter((text) => {
-        const version = contextUpdateVersionRef.current + 1;
-        contextUpdateVersionRef.current = version;
-        agent.sendContextUpdate(buildCanvasContextualUpdate(text, { version }));
-        setLastContextSentAt(new Date());
-        setContextPending(false);
+      const contextSync = createCanvasContextSync({
+        sendContextUpdate: (text) => {
+          agent.sendContextUpdate(text);
+        },
+        onStatusChange: handleCanvasContextSyncStatus
       });
 
       agent.on("audio", (audio) => {
@@ -218,7 +238,7 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
         processor,
         videoElement,
         audioElement,
-        contextAdapter,
+        contextSync,
         closeState
       };
 
@@ -236,11 +256,10 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
         voiceAgentDetails: liveSession.voiceAgentDetails
       });
 
-      contextSyncReadyRef.current = true;
-      contextAdapter.push(latestCanvasStateRef.current);
-      contextAdapter.start();
-      await contextAdapter.flush(latestCanvasStateRef.current);
-      logEvent("Canvas context synced");
+      setContextSyncReadyValue(true);
+      contextSync.push(latestCanvasTextRef.current);
+      contextSync.start();
+      logEvent("Canvas context sync started");
 
       setIsConnected(true);
       logEvent("Live avatar connected");
@@ -248,7 +267,8 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
       await cleanupBridge();
       setError(formatError(err));
       setIsConnected(false);
-      setContextPending(false);
+      setContextSending(false);
+      setPendingContextEdits(0);
     } finally {
       setIsConnecting(false);
     }
@@ -261,15 +281,22 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
 
   async function cleanupBridge() {
     const bridge = bridgeRef.current;
-    contextSyncReadyRef.current = false;
+    setContextSyncReadyValue(false);
     if (!bridge) {
       setIsConnected(false);
+      setContextSending(false);
+      setPendingContextEdits(0);
+      setContextSyncError(null);
+      setLastContextSentAt(null);
+      setLastContextVersion(0);
+      lastLoggedContextVersionRef.current = 0;
+      lastLoggedContextErrorRef.current = null;
       return;
     }
 
     bridge.closeState.expected = true;
     bridgeRef.current = null;
-    bridge.contextAdapter.stop();
+    bridge.contextSync.stop();
     bridge.stream.getTracks().forEach((track) => track.stop());
     bridge.processor.disconnect();
     bridge.source.disconnect();
@@ -279,6 +306,34 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
     bridge.videoElement.remove();
     bridge.audioElement.remove();
     setIsConnected(false);
+    setContextSending(false);
+    setPendingContextEdits(0);
+    setContextSyncError(null);
+    setLastContextSentAt(null);
+    setLastContextVersion(0);
+    lastLoggedContextVersionRef.current = 0;
+    lastLoggedContextErrorRef.current = null;
+  }
+
+  function handleCanvasContextSyncStatus(status: CanvasContextSyncStatus) {
+    setContextSending(status.isSending);
+    setPendingContextEdits(status.pendingEdits);
+    setLastContextSentAt(status.lastSentAt);
+    setLastContextVersion(status.lastSentVersion);
+    setContextSyncError(status.error);
+
+    if (status.error && status.error !== lastLoggedContextErrorRef.current) {
+      lastLoggedContextErrorRef.current = status.error;
+      logEvent(`Canvas context sync failed: ${status.error}`);
+    }
+    if (!status.error) {
+      lastLoggedContextErrorRef.current = null;
+    }
+
+    if (status.lastSentVersion > lastLoggedContextVersionRef.current) {
+      lastLoggedContextVersionRef.current = status.lastSentVersion;
+      logEvent("Canvas context sent");
+    }
   }
 
   function createPersonaSession(
@@ -408,9 +463,9 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
         : "Ready";
   const subtitle = isConnected
     ? contextPending
-      ? "Syncing canvas"
+      ? "Syncing"
       : lastContextSentAt
-        ? "Canvas synced"
+        ? "Synced"
         : "Live interview"
     : "System design interviewer";
 
@@ -521,6 +576,11 @@ export function FloatingAvatarWindow({ canvasState, canvasText }: FloatingAvatar
     return minimized
       ? { width: MINIMIZED_WIDTH, height: MINIMIZED_HEIGHT }
       : { width: PANEL_WIDTH, height: PANEL_HEIGHT };
+  }
+
+  function setContextSyncReadyValue(nextReady: boolean) {
+    contextSyncReadyRef.current = nextReady;
+    setContextSyncReady(nextReady);
   }
 }
 
