@@ -16,7 +16,7 @@ This demo pairs the reusable infinite canvas with a floating Keyframe Labs avata
 4. Install JavaScript dependencies with `pnpm install`.
 5. Start the app with `pnpm dev`.
 
-The client runs on `http://127.0.0.1:5174` and the API runs on `http://127.0.0.1:8788` by default.
+The client runs on `http://localhost:5174` and the API runs on `http://localhost:8788` by default.
 
 Python commands run through `uv run`, which uses the repo `.python-version` file.
 

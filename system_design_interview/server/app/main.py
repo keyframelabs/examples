@@ -20,7 +20,6 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env",)
 DEFAULT_CLIENT_ORIGINS = [
     "http://localhost:5174",
-    "http://127.0.0.1:5174",
 ]
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 35.0
 SERVICE_NAME = "kfl-system-design-interview"
