@@ -17,8 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-SERVER_DIR = ROOT_DIR / "server"
-ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env", SERVER_DIR / ".env")
+ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env",)
 DEFAULT_CLIENT_ORIGINS = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",

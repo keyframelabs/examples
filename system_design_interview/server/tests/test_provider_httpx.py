@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app import main
 
 ResponseFactory = Callable[[str, str, dict[str, Any]], "StubResponse"]
+PRODUCTION_ENV_FILES = main.ENV_FILES
 
 
 class StubResponse:
@@ -67,6 +68,44 @@ def run_async(awaitable: Any) -> Any:
 
 def make_settings() -> main.Settings:
     return main.Settings(_env_file=None)
+
+
+def test_settings_loads_only_root_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    assert PRODUCTION_ENV_FILES == (main.ROOT_DIR / ".env",)
+
+    root_env = tmp_path / ".env"
+    server_dir = tmp_path / "server"
+    server_dir.mkdir()
+    server_env = server_dir / ".env"
+    root_env.write_text(
+        "\n".join(
+            [
+                "KEYFRAME_PERSONA_SLUG=root-persona",
+                "CLIENT_ORIGIN=http://root.example",
+                "PROVIDER_TIMEOUT_SECONDS=12",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    server_env.write_text(
+        "\n".join(
+            [
+                "KEYFRAME_PERSONA_SLUG=server-persona",
+                "CLIENT_ORIGIN=http://server.example",
+                "PROVIDER_TIMEOUT_SECONDS=99",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(main, "ENV_FILES", (root_env,))
+    main.get_settings.cache_clear()
+
+    settings = main.get_settings()
+
+    assert settings.keyframe_persona_slug == "root-persona"
+    assert settings.client_origins == ["http://root.example"]
+    assert settings.provider_timeout_seconds == 12
 
 
 @pytest.fixture(autouse=True)

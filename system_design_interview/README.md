@@ -11,10 +11,14 @@ This demo pairs the reusable infinite canvas with a floating Keyframe Labs avata
 ## Run
 
 1. Copy `.env.example` to `.env` and fill in the provider keys.
-2. Install dependencies with `pnpm install`.
-3. Start the app with `pnpm dev`.
+2. Install `uv`.
+3. Install Python 3.12 and Python dependencies with `uv sync`.
+4. Install JavaScript dependencies with `pnpm install`.
+5. Start the app with `pnpm dev`.
 
 The client runs on `http://127.0.0.1:5174` and the API runs on `http://127.0.0.1:8788` by default.
+
+Python commands run through `uv run`, which uses the repo `.python-version` file.
 
 `PROVIDER_TIMEOUT_SECONDS` controls the timeout for Keyframe session creation and ElevenLabs signed URL requests.
 
