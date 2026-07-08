@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { createClient, type PersonaSession } from "@keyframelabs/sdk";
-import { floatTo16BitPCM } from "@keyframelabs/elements";
+import { PersonaView } from "@keyframelabs/elements";
 import {
   AlertCircle,
   GripHorizontal,
@@ -12,13 +11,15 @@ import {
   RadioTower
 } from "lucide-react";
 import { createLiveSession } from "../../lib/api";
-import { ElevenLabsRuntimeAgent, type RuntimeAgentEventMap } from "../../lib/elevenlabs-runtime-agent";
-import type { LiveSessionResponse } from "../../types/live-session";
 import {
   createCanvasContextSync,
   type CanvasContextSync,
   type CanvasContextSyncStatus
 } from "./canvasContextSync";
+import {
+  attachPersonaTranscriptObserver,
+  sendPersonaContext
+} from "./personaViewRuntime";
 
 type FloatingAvatarWindowProps = {
   canvasText: string;
@@ -34,18 +35,13 @@ export type CanvasSyncStatus = {
   error: string | null;
 };
 
-type ActiveBridge = {
-  session: PersonaSession;
-  agent: ElevenLabsRuntimeAgent;
-  stream: MediaStream;
-  audioContext: AudioContext;
-  source: MediaStreamAudioSourceNode;
-  processor: ScriptProcessorNode;
-  videoElement: HTMLVideoElement;
-  audioElement: HTMLAudioElement;
+type ActiveRuntime = {
+  view: PersonaView;
   contextSync: CanvasContextSync;
+  detachTranscriptObserver: () => void;
   closeState: {
     expected: boolean;
+    disconnectHandled: boolean;
   };
 };
 
@@ -71,7 +67,7 @@ export function FloatingAvatarWindow({
 }: FloatingAvatarWindowProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const bridgeRef = useRef<ActiveBridge | null>(null);
+  const runtimeRef = useRef<ActiveRuntime | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const latestCanvasTextRef = useRef(canvasText);
   const contextSyncReadyRef = useRef(false);
@@ -94,12 +90,12 @@ export function FloatingAvatarWindow({
 
   useEffect(() => {
     latestCanvasTextRef.current = canvasText;
-    const bridge = bridgeRef.current;
-    if (!bridge || !contextSyncReadyRef.current) {
+    const runtime = runtimeRef.current;
+    if (!runtime || !contextSyncReadyRef.current) {
       return;
     }
 
-    bridge.contextSync.push(canvasText);
+    runtime.contextSync.push(canvasText);
   }, [canvasText]);
 
   useEffect(() => {
@@ -126,7 +122,7 @@ export function FloatingAvatarWindow({
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerEnd);
       window.removeEventListener("pointercancel", handleWindowPointerEnd);
-      void cleanupBridge();
+      cleanupRuntime();
     };
   }, []);
 
@@ -162,7 +158,7 @@ export function FloatingAvatarWindow({
     lastLoggedContextErrorRef.current = null;
 
     try {
-      await cleanupBridge();
+      cleanupRuntime();
       setContextSyncReadyValue(false);
       const liveSession = await createLiveSession();
       const container = containerRef.current;
@@ -171,90 +167,64 @@ export function FloatingAvatarWindow({
       }
 
       clearContainer(container);
-      const videoElement = createVideoElement();
-      const audioElement = createAudioElement();
-      container.appendChild(videoElement);
-      container.appendChild(audioElement);
+      const closeState = { expected: false, disconnectHandled: false };
+      let connectError: string | null = null;
+      const view = new PersonaView({
+        container,
+        sessionDetails: liveSession.sessionDetails,
+        voiceAgentDetails: liveSession.voiceAgentDetails,
+        videoFit: "contain",
+        onStateChange: (nextStatus) => {
+          logEvent(`PersonaView state: ${nextStatus}`);
+          setIsConnecting(nextStatus === "connecting");
+          setIsConnected(nextStatus === "connected");
+        },
+        onAgentStateChange: (nextStatus) => {
+          logEvent(`Avatar playback: ${nextStatus}`);
+        },
+        onDisconnect: () => {
+          logEvent("Live interviewer disconnected");
+          if (closeState.expected || closeState.disconnectHandled) {
+            return;
+          }
 
-      const agent = new ElevenLabsRuntimeAgent();
-      const closeState = { expected: false };
-      const personaSession = createPersonaSession(liveSession, videoElement, audioElement, closeState);
+          closeState.disconnectHandled = true;
+          handleUnexpectedDisconnect("Live interviewer disconnected.");
+        },
+        onError: (err) => {
+          connectError = err.message;
+          logEvent(`PersonaView error: ${err.message}`);
+          setError(`Live interviewer error: ${err.message}`);
+        }
+      });
       const contextSync = createCanvasContextSync({
         sendContextUpdate: (text) => {
-          agent.sendContextUpdate(text);
+          sendPersonaContext(view, text);
         },
         onStatusChange: handleCanvasContextSyncStatus
       });
 
-      agent.on("audio", (audio) => {
-        void personaSession.sendAudio(audio);
-      });
-      agent.on("turnEnd", () => {
-        logEvent("ElevenLabs turn ended");
-        void personaSession.endAudioTurn();
-      });
-      agent.on("interrupted", () => {
-        logEvent("ElevenLabs interruption");
-        void personaSession.endAudioTurn();
-        void personaSession.interrupt();
-      });
-      agent.on("emotion", (emotion) => {
-        void personaSession.setEmotion(emotion);
-      });
-      agent.on("stateChange", (nextStatus: RuntimeAgentEventMap["stateChange"]) => {
-        logEvent(`ElevenLabs state: ${nextStatus}`);
-      });
-      agent.on("transcript", (transcript: RuntimeAgentEventMap["transcript"]) => {
-        if (transcript.isFinal && transcript.text.trim()) {
-          logEvent(`Transcript received: ${transcript.role}`);
-        }
-      });
-      agent.on("closed", (closed: RuntimeAgentEventMap["closed"]) => {
-        if (closeState.expected) {
-          return;
-        }
-        const reason = formatAgentClose(closed);
-        logEvent(`ElevenLabs closed: ${reason}`);
-        handleUnexpectedClose("elevenlabs", reason);
-      });
-
-      logEvent("Connecting to Keyframe room");
-      await personaSession.connect();
-
-      logEvent("Requesting microphone");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 16_000, echoCancellation: true, noiseSuppression: true }
-      });
-      const audioContext = new AudioContext({ sampleRate: 16_000 });
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-      bridgeRef.current = {
-        session: personaSession,
-        agent,
-        stream,
-        audioContext,
-        source,
-        processor,
-        videoElement,
-        audioElement,
+      runtimeRef.current = {
+        view,
         contextSync,
+        detachTranscriptObserver: () => undefined,
         closeState
       };
 
-      processor.onaudioprocess = (event) => {
-        agent.sendAudio(floatTo16BitPCM(event.inputBuffer.getChannelData(0)));
-      };
-      source.connect(processor);
-      processor.connect(audioContext.destination);
+      logEvent("Connecting live interviewer");
+      await view.connect();
+      if (view.status !== "connected") {
+        throw new Error(connectError ?? "Live interviewer failed to connect.");
+      }
 
-      logEvent("Connecting to ElevenLabs");
-      await agent.connect({
-        agentId: liveSession.voiceAgentDetails.agent_id ?? "",
-        signedUrl: liveSession.voiceAgentDetails.signed_url,
-        inputSampleRate: 16_000,
-        voiceAgentDetails: liveSession.voiceAgentDetails
-      });
+      const runtime = runtimeRef.current;
+      if (runtime?.view === view) {
+        runtime.detachTranscriptObserver = attachPersonaTranscriptObserver(view, (transcript) => {
+          if (transcript.isFinal && transcript.text.trim()) {
+            logEvent(`Transcript received: ${transcript.role}`);
+          }
+        });
+      }
 
       setContextSyncReadyValue(true);
       contextSync.push(latestCanvasTextRef.current);
@@ -262,9 +232,9 @@ export function FloatingAvatarWindow({
       logEvent("Canvas context sync started");
 
       setIsConnected(true);
-      logEvent("Live avatar connected");
+      logEvent("Live interviewer connected");
     } catch (err) {
-      await cleanupBridge();
+      cleanupRuntime();
       setError(formatError(err));
       setIsConnected(false);
       setContextSending(false);
@@ -276,13 +246,13 @@ export function FloatingAvatarWindow({
 
   async function endCall() {
     setError(null);
-    await cleanupBridge();
+    cleanupRuntime();
   }
 
-  async function cleanupBridge() {
-    const bridge = bridgeRef.current;
+  function cleanupRuntime() {
+    const runtime = runtimeRef.current;
     setContextSyncReadyValue(false);
-    if (!bridge) {
+    if (!runtime) {
       setIsConnected(false);
       setContextSending(false);
       setPendingContextEdits(0);
@@ -294,17 +264,13 @@ export function FloatingAvatarWindow({
       return;
     }
 
-    bridge.closeState.expected = true;
-    bridgeRef.current = null;
-    bridge.contextSync.stop();
-    bridge.stream.getTracks().forEach((track) => track.stop());
-    bridge.processor.disconnect();
-    bridge.source.disconnect();
-    await bridge.audioContext.close().catch(() => undefined);
-    bridge.agent.close();
-    await bridge.session.close().catch(() => undefined);
-    bridge.videoElement.remove();
-    bridge.audioElement.remove();
+    runtime.closeState.expected = true;
+    runtimeRef.current = null;
+    runtime.contextSync.stop();
+    runtime.detachTranscriptObserver();
+    runtime.view.disconnect();
+    runtime.view.videoElement.remove();
+    runtime.view.audioElement.remove();
     setIsConnected(false);
     setContextSending(false);
     setPendingContextEdits(0);
@@ -336,53 +302,9 @@ export function FloatingAvatarWindow({
     }
   }
 
-  function createPersonaSession(
-    liveSession: LiveSessionResponse,
-    videoElement: HTMLVideoElement,
-    audioElement: HTMLAudioElement,
-    closeState: ActiveBridge["closeState"]
-  ): PersonaSession {
-    return createClient({
-      serverUrl: liveSession.sessionDetails.server_url,
-      participantToken: liveSession.sessionDetails.participant_token,
-      agentIdentity: liveSession.sessionDetails.agent_identity,
-      onVideoTrack: (track) => {
-        logEvent("Keyframe video track received");
-        videoElement.srcObject = new MediaStream([track]);
-        void videoElement.play().catch((err: unknown) => {
-          logEvent(`Video play blocked: ${formatError(err)}`);
-        });
-      },
-      onAudioTrack: (track) => {
-        logEvent("Keyframe audio track received");
-        audioElement.srcObject = new MediaStream([track]);
-        void audioElement.play().catch(() => undefined);
-      },
-      onStateChange: (nextStatus) => {
-        logEvent(`Keyframe state: ${nextStatus}`);
-        setIsConnected(nextStatus === "connected");
-      },
-      onAgentStateChange: (nextStatus) => {
-        logEvent(`Avatar playback: ${nextStatus}`);
-      },
-      onClose: (reason) => {
-        logEvent(`Keyframe room closed: ${reason}`);
-        if (closeState.expected) {
-          return;
-        }
-        handleUnexpectedClose("keyframe", reason);
-      },
-      onError: (err) => {
-        logEvent(`Keyframe error: ${err.message}`);
-        setError(`Live interviewer error: ${err.message}`);
-      }
-    });
-  }
-
-  function handleUnexpectedClose(source: "keyframe" | "elevenlabs", reason: string) {
-    const label = source === "keyframe" ? "Live interviewer" : "Voice connection";
-    setError(`${label} disconnected: ${reason}`);
-    void cleanupBridge();
+  function handleUnexpectedDisconnect(message: string) {
+    setError(message);
+    cleanupRuntime();
   }
 
   function logEvent(message: string) {
@@ -508,7 +430,7 @@ export function FloatingAvatarWindow({
         {!minimized ? (
           <div className="grid gap-3 p-3">
             <div className="relative aspect-square min-h-[300px] overflow-hidden rounded-md bg-[#101418]">
-              <div ref={containerRef} className="absolute inset-0" />
+              <div ref={containerRef} className="h-full w-full overflow-hidden" />
               {!isConnected ? (
                 <div className="absolute inset-0 grid place-items-center px-5 text-center">
                   <div>
@@ -540,7 +462,7 @@ export function FloatingAvatarWindow({
                 onClick={() => {
                   void endCall();
                 }}
-                disabled={!isConnected && !bridgeRef.current}
+                disabled={!isConnected && !runtimeRef.current}
               >
                 <PhoneOff className="size-4" />
                 End
@@ -584,25 +506,6 @@ export function FloatingAvatarWindow({
   }
 }
 
-function createVideoElement(): HTMLVideoElement {
-  const video = document.createElement("video");
-  video.style.position = "absolute";
-  video.style.inset = "0";
-  video.style.width = "100%";
-  video.style.height = "100%";
-  video.style.objectFit = "contain";
-  video.autoplay = true;
-  video.playsInline = true;
-  video.muted = true;
-  return video;
-}
-
-function createAudioElement(): HTMLAudioElement {
-  const audio = document.createElement("audio");
-  audio.autoplay = true;
-  return audio;
-}
-
 function clearContainer(container: HTMLElement) {
   while (container.firstChild) {
     container.firstChild.remove();
@@ -612,12 +515,6 @@ function clearContainer(container: HTMLElement) {
 function shouldShowConnectionLog(): boolean {
   const params = new URLSearchParams(window.location.search);
   return params.has("cli") || window.location.hash.toLowerCase().includes("cli");
-}
-
-function formatAgentClose(closed: RuntimeAgentEventMap["closed"]): string {
-  const code = closed.code ? `code ${closed.code}` : "no code";
-  const reason = closed.reason?.trim() ? closed.reason : "no reason";
-  return `${code}, ${reason}`;
 }
 
 function formatError(err: unknown): string {

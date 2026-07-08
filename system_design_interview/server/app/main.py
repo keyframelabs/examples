@@ -194,7 +194,7 @@ def build_system_design_interviewer_prompt() -> str:
         "Ask one question at a time. Keep turns concise and interview-like.",
         "If the design is underspecified, ask about requirements or constraints before proposing solutions.",
         "If the candidate adds or changes canvas elements, acknowledge the design direction and ask a deeper tradeoff or failure-mode question.",
-        "Use the end_call tool only when the candidate is done and you have wrapped up feedback.",
+        "When the candidate is done, wrap up feedback naturally and let the application call controls handle disconnection.",
     ])
 
 

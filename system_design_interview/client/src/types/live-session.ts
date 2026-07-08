@@ -1,13 +1,14 @@
-export type KeyframeSessionDetails = {
-  server_url: string;
-  participant_token: string;
-  agent_identity: string;
-};
+import type {
+  SessionDetails,
+  VoiceAgentDetails as PersonaVoiceAgentDetails
+} from "@keyframelabs/elements";
 
-export type VoiceAgentDetails = {
+export type KeyframeSessionDetails = SessionDetails;
+
+export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   type: "elevenlabs";
   agent_id?: string;
-  signed_url: string;
+  signed_url?: string;
   dynamic_variables?: Record<string, string>;
   dynamicVariables?: Record<string, string>;
   overrides?: Record<string, unknown>;

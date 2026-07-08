@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@keyframelabs/elements": "^0.5.1",
-    "@keyframelabs/sdk": "^0.2.0",
     "@kfl-system-design/infinite-canvas": "workspace:*",
     "@vitejs/plugin-react": "^4.6.0",
     "lucide-react": "^0.525.0",

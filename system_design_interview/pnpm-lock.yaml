@@ -23,9 +23,6 @@ importers:
       '@keyframelabs/elements':
         specifier: ^0.5.1
         version: 0.5.1(@types/dom-mediacapture-record@1.0.22)
-      '@keyframelabs/sdk':
-        specifier: ^0.2.0
-        version: 0.2.0(@types/dom-mediacapture-record@1.0.22)
       '@kfl-system-design/infinite-canvas':
         specifier: workspace:*
         version: link:../infinite-canvas
