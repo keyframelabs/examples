@@ -13,9 +13,12 @@ import {
 import { createLiveSession } from "../../lib/api";
 import {
   createCanvasContextSync,
-  type CanvasContextSync,
   type CanvasContextSyncStatus
 } from "./canvasContextSync";
+import {
+  cleanupPersonaViewRuntime,
+  type PersonaViewRuntime
+} from "./personaViewCleanup";
 import {
   attachPersonaTranscriptObserver,
   sendPersonaContext
@@ -33,16 +36,6 @@ export type CanvasSyncStatus = {
   lastSentAt: number | null;
   lastSentVersion: number;
   error: string | null;
-};
-
-type ActiveRuntime = {
-  view: PersonaView;
-  contextSync: CanvasContextSync;
-  detachTranscriptObserver: () => void;
-  closeState: {
-    expected: boolean;
-    disconnectHandled: boolean;
-  };
 };
 
 type Position = {
@@ -67,7 +60,8 @@ export function FloatingAvatarWindow({
 }: FloatingAvatarWindowProps) {
   const panelRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const runtimeRef = useRef<ActiveRuntime | null>(null);
+  const runtimeRef = useRef<PersonaViewRuntime | null>(null);
+  const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const latestCanvasTextRef = useRef(canvasText);
   const contextSyncReadyRef = useRef(false);
@@ -122,7 +116,9 @@ export function FloatingAvatarWindow({
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerEnd);
       window.removeEventListener("pointercancel", handleWindowPointerEnd);
-      cleanupRuntime();
+      void cleanupRuntime().catch((err) => {
+        console.error("Failed to clean up live interviewer.", err);
+      });
     };
   }, []);
 
@@ -158,7 +154,7 @@ export function FloatingAvatarWindow({
     lastLoggedContextErrorRef.current = null;
 
     try {
-      cleanupRuntime();
+      await cleanupRuntime();
       setContextSyncReadyValue(false);
       const liveSession = await createLiveSession();
       const container = containerRef.current;
@@ -234,7 +230,11 @@ export function FloatingAvatarWindow({
       setIsConnected(true);
       logEvent("Live interviewer connected");
     } catch (err) {
-      cleanupRuntime();
+      try {
+        await cleanupRuntime();
+      } catch (cleanupErr) {
+        console.error("Failed to clean up live interviewer after connection error.", cleanupErr);
+      }
       setError(formatError(err));
       setIsConnected(false);
       setContextSending(false);
@@ -246,31 +246,42 @@ export function FloatingAvatarWindow({
 
   async function endCall() {
     setError(null);
-    cleanupRuntime();
+    try {
+      await cleanupRuntime();
+    } catch (err) {
+      setError(`Could not cleanly end the live interviewer: ${formatError(err)}`);
+    }
   }
 
-  function cleanupRuntime() {
-    const runtime = runtimeRef.current;
-    setContextSyncReadyValue(false);
-    if (!runtime) {
-      setIsConnected(false);
-      setContextSending(false);
-      setPendingContextEdits(0);
-      setContextSyncError(null);
-      setLastContextSentAt(null);
-      setLastContextVersion(0);
-      lastLoggedContextVersionRef.current = 0;
-      lastLoggedContextErrorRef.current = null;
+  async function cleanupRuntime() {
+    const inFlightCleanup = cleanupPromiseRef.current;
+    if (inFlightCleanup) {
+      await inFlightCleanup;
       return;
     }
 
-    runtime.closeState.expected = true;
+    const runtime = runtimeRef.current;
+    setContextSyncReadyValue(false);
+    if (!runtime) {
+      resetRuntimeState();
+      return;
+    }
+
     runtimeRef.current = null;
-    runtime.contextSync.stop();
-    runtime.detachTranscriptObserver();
-    runtime.view.disconnect();
-    runtime.view.videoElement.remove();
-    runtime.view.audioElement.remove();
+    const cleanupPromise = cleanupPersonaViewRuntime(runtime);
+    cleanupPromiseRef.current = cleanupPromise;
+
+    try {
+      await cleanupPromise;
+    } finally {
+      if (cleanupPromiseRef.current === cleanupPromise) {
+        cleanupPromiseRef.current = null;
+      }
+      resetRuntimeState();
+    }
+  }
+
+  function resetRuntimeState() {
     setIsConnected(false);
     setContextSending(false);
     setPendingContextEdits(0);
@@ -304,7 +315,9 @@ export function FloatingAvatarWindow({
 
   function handleUnexpectedDisconnect(message: string) {
     setError(message);
-    cleanupRuntime();
+    void cleanupRuntime().catch((err) => {
+      setError(`${message} ${formatError(err)}`);
+    });
   }
 
   function logEvent(message: string) {

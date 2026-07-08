@@ -70,6 +70,13 @@ def make_settings() -> main.Settings:
     return main.Settings(_env_file=None)
 
 
+def test_default_client_origins_include_localhost_and_loopback() -> None:
+    assert make_settings().client_origins == [
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
+
+
 def test_settings_loads_only_root_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert PRODUCTION_ENV_FILES == (main.ROOT_DIR / ".env",)
 
