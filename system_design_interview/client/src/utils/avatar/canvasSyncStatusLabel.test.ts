@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CanvasSyncStatus } from "./FloatingAvatarWindow";
+import type { CanvasSyncStatus } from "./canvasSyncStatus";
 import { getCanvasSyncPrimaryText } from "./canvasSyncStatusLabel";
 
 const readyStatus: CanvasSyncStatus = {

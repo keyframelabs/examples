@@ -1,4 +1,4 @@
-import type { CanvasSyncStatus } from "./FloatingAvatarWindow";
+import type { CanvasSyncStatus } from "./canvasSyncStatus";
 
 export function getCanvasSyncPrimaryText(status: CanvasSyncStatus): string {
   if (status.error) {
