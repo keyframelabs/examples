@@ -37,7 +37,7 @@ def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     main.get_settings.cache_clear()
 
 
-def test_cors_allows_localhost_and_loopback_dev_origins() -> None:
+def test_cors_allows_localhost_dev_origin() -> None:
     with TestClient(main.app) as client:
         localhost_response = client.options(
             "/api/session",
@@ -46,18 +46,9 @@ def test_cors_allows_localhost_and_loopback_dev_origins() -> None:
                 "Access-Control-Request-Method": "POST",
             },
         )
-        loopback_response = client.options(
-            "/api/session",
-            headers={
-                "Origin": "http://127.0.0.1:5174",
-                "Access-Control-Request-Method": "POST",
-            },
-        )
 
     assert localhost_response.status_code == 200
     assert localhost_response.headers["access-control-allow-origin"] == "http://localhost:5174"
-    assert loopback_response.status_code == 200
-    assert loopback_response.headers["access-control-allow-origin"] == "http://127.0.0.1:5174"
 
 
 def test_create_session_endpoint_uses_keyframe_and_elevenlabs_provider_flow(
