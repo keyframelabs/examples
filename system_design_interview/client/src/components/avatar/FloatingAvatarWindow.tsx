@@ -11,31 +11,23 @@ import {
   RadioTower
 } from "lucide-react";
 import { createLiveSession } from "../../lib/api";
+import type { CanvasSyncStatus } from "../../types/canvas-sync-status";
 import {
   createCanvasContextSync,
   type CanvasContextSyncStatus
-} from "./canvasContextSync";
-import {
-  cleanupPersonaViewRuntime,
-  type PersonaViewRuntime
-} from "./personaViewCleanup";
+} from "../../utils/avatar/canvasContextSync";
 import {
   attachPersonaTranscriptObserver,
+  cleanupPersonaViewRuntime,
+  type PersonaViewRuntime,
   sendPersonaContext
-} from "./personaViewRuntime";
+} from "../../utils/avatar/personaViewRuntime";
+
+export type { CanvasSyncStatus } from "../../types/canvas-sync-status";
 
 type FloatingAvatarWindowProps = {
   canvasText: string;
   onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
-};
-
-export type CanvasSyncStatus = {
-  isReady: boolean;
-  isSending: boolean;
-  pendingEdits: number;
-  lastSentAt: number | null;
-  lastSentVersion: number;
-  error: string | null;
 };
 
 type Position = {

@@ -1,6 +1,27 @@
-import type { LiveSessionResponse } from "../types/live-session";
+import type {
+  SessionDetails,
+  VoiceAgentDetails as PersonaVoiceAgentDetails
+} from "@keyframelabs/elements";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8788";
+
+export type KeyframeSessionDetails = SessionDetails;
+
+export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
+  type: "elevenlabs";
+  agent_id?: string;
+  signed_url?: string;
+  dynamic_variables?: Record<string, string>;
+  dynamicVariables?: Record<string, string>;
+  overrides?: Record<string, unknown>;
+  conversation_config_override?: Record<string, unknown>;
+};
+
+export type LiveSessionResponse = {
+  sessionDetails: KeyframeSessionDetails;
+  voiceAgentDetails: VoiceAgentDetails;
+  conversationId?: string;
+};
 
 export async function createLiveSession(): Promise<LiveSessionResponse> {
   const response = await fetch(`${API_BASE_URL}/api/session`, {

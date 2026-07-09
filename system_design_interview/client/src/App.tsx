@@ -1,12 +1,10 @@
 import { useCallback, useState } from "react";
 import { SystemDesignCanvas } from "@kfl-system-design/infinite-canvas";
 
-import {
-  FloatingAvatarWindow,
-  type CanvasSyncStatus
-} from "./features/avatar/FloatingAvatarWindow";
-import { getCanvasSyncPrimaryText } from "./features/avatar/canvasSyncStatusLabel";
-import { initialSystemDesignCanvas } from "./features/interview/initialCanvas";
+import { CanvasSyncIndicator } from "./components/avatar/CanvasSyncIndicator";
+import { FloatingAvatarWindow } from "./components/avatar/FloatingAvatarWindow";
+import type { CanvasSyncStatus } from "./types/canvas-sync-status";
+import { initialSystemDesignCanvas } from "./utils/interview/initialCanvas";
 
 const initialCanvasSyncStatus: CanvasSyncStatus = {
   isReady: false,
@@ -43,20 +41,5 @@ export function App() {
         onCanvasSyncStatusChange={setCanvasSyncStatus}
       />
     </main>
-  );
-}
-
-function CanvasSyncIndicator({ status }: { status: CanvasSyncStatus }) {
-  if (!status.isReady) {
-    return null;
-  }
-
-  return (
-    <div
-      aria-live="polite"
-      className="pointer-events-none fixed bottom-4 right-4 z-30 inline-flex h-[42px] items-center rounded-lg border border-slate-200 bg-white/95 px-3 text-xs font-medium text-slate-700 shadow-toolbar backdrop-blur"
-    >
-      {getCanvasSyncPrimaryText(status)}
-    </div>
   );
 }
