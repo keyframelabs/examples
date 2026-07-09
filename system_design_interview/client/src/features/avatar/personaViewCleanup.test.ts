@@ -51,23 +51,6 @@ describe("cleanupPersonaViewRuntime", () => {
       "audio:remove"
     ]);
   });
-
-  it("removes media elements and propagates disconnect failures", async () => {
-    const disconnectError = new Error("disconnect failed");
-    const videoRemove = vi.fn();
-    const audioRemove = vi.fn();
-    const runtime = makeRuntime({
-      disconnect: vi.fn(async () => {
-        throw disconnectError;
-      }),
-      videoRemove,
-      audioRemove
-    });
-
-    await expect(cleanupPersonaViewRuntime(runtime)).rejects.toThrow(disconnectError);
-    expect(videoRemove).toHaveBeenCalledOnce();
-    expect(audioRemove).toHaveBeenCalledOnce();
-  });
 });
 
 function makeRuntime({

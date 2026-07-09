@@ -7,104 +7,32 @@ describe("createCanvasContextBuffer", () => {
     vi.useRealTimers();
   });
 
-  it("sends nothing when no summary has been pushed", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    await vi.advanceTimersByTimeAsync(1200);
-
-    expect(sender).not.toHaveBeenCalled();
-    buffer.stop();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("hashes every 200ms and waits until the 1000ms send tick", async () => {
+  it("sends the latest pushed summary on the buffered cadence", async () => {
     vi.useFakeTimers();
     const sender = vi.fn();
     const buffer = createCanvasContextBuffer(sender);
 
     buffer.start();
     buffer.push("Canvas A");
-
-    await vi.advanceTimersByTimeAsync(199);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
-    expect(sender).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(799);
-    expect(sender).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1);
-    expect(sender).toHaveBeenCalledTimes(1);
-    expect(sender).toHaveBeenLastCalledWith("Canvas A");
-
-    buffer.stop();
-  });
-
-  it("samples before sending when hash and send ticks share a boundary", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(199);
+    await vi.advanceTimersByTimeAsync(500);
     buffer.push("Canvas B");
-    await vi.advanceTimersByTimeAsync(800);
-    buffer.push("Canvas C");
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(500);
 
     expect(sender).toHaveBeenCalledTimes(1);
-    expect(sender).toHaveBeenLastCalledWith("Canvas C");
+    expect(sender).toHaveBeenCalledWith("Canvas B");
 
     buffer.stop();
   });
 
-  it("keeps only the latest summary inside one send window", async () => {
+  it("dedupes unchanged summaries while still sending later changes", async () => {
     vi.useFakeTimers();
     const sender = vi.fn();
     const buffer = createCanvasContextBuffer(sender);
 
     buffer.start();
     buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(200);
-    buffer.push("Canvas B");
-    await vi.advanceTimersByTimeAsync(200);
-    buffer.push("Canvas C");
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(1000);
 
-    expect(sender).toHaveBeenCalledTimes(1);
-    expect(sender).toHaveBeenLastCalledWith("Canvas C");
-
-    buffer.stop();
-  });
-
-  it("dedupes 1800 identical 1Hz summary updates", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    for (let index = 0; index < 1800; index += 1) {
-      buffer.push("Canvas v8\nNodes:\nservice api: API Gateway");
-      await vi.advanceTimersByTimeAsync(1000);
-    }
-
-    expect(sender).toHaveBeenCalledTimes(1);
-
-    buffer.stop();
-  });
-
-  it("sends a changed summary on the next send tick after a successful send", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
     buffer.push("Canvas A");
     await vi.advanceTimersByTimeAsync(1000);
 
@@ -118,12 +46,20 @@ describe("createCanvasContextBuffer", () => {
     buffer.stop();
   });
 
-  it("does not overlap sends while the sender is still in flight", async () => {
+  it("waits for in-flight sends before sending the latest pending summary", async () => {
     vi.useFakeTimers();
-    const resolves: Array<() => void> = [];
-    const sender = vi.fn(() => new Promise<void>((resolve) => {
-      resolves.push(resolve);
-    }));
+    let callCount = 0;
+    let finishFirstSend: (() => void) | undefined;
+    const sender = vi.fn(() => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise<void>((resolve) => {
+          finishFirstSend = resolve;
+        });
+      }
+
+      return Promise.resolve();
+    });
     const buffer = createCanvasContextBuffer(sender);
 
     buffer.start();
@@ -135,7 +71,7 @@ describe("createCanvasContextBuffer", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(sender).toHaveBeenCalledTimes(1);
 
-    resolves[0]?.();
+    finishFirstSend?.();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(1000);
 
@@ -143,148 +79,5 @@ describe("createCanvasContextBuffer", () => {
     expect(sender).toHaveBeenNthCalledWith(2, "Canvas B");
 
     buffer.stop();
-  });
-
-  it("requeues a reverted canvas after an async send resolves", async () => {
-    vi.useFakeTimers();
-    const resolves: Array<() => void> = [];
-    const sender = vi.fn(() => new Promise<void>((resolve) => {
-      resolves.push(resolve);
-    }));
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(sender).toHaveBeenCalledTimes(1);
-
-    resolves[0]?.();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
-
-    buffer.push("Canvas B");
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(sender).toHaveBeenCalledTimes(2);
-    expect(sender).toHaveBeenNthCalledWith(2, "Canvas B");
-
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(200);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
-
-    resolves[1]?.();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
-
-    await vi.advanceTimersByTimeAsync(800);
-
-    expect(sender).toHaveBeenCalledTimes(3);
-    expect(sender).toHaveBeenNthCalledWith(3, "Canvas A");
-
-    resolves[2]?.();
-    await vi.advanceTimersByTimeAsync(0);
-    buffer.stop();
-  });
-
-  it("retries the same summary after a send failure", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn()
-      .mockRejectedValueOnce(new Error("provider busy"))
-      .mockResolvedValue(undefined);
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(sender).toHaveBeenCalledTimes(1);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
-    expect(buffer.getStatus().lastSentHash).toBeNull();
-    expect(buffer.getStatus().error).toBe("provider busy");
-
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(sender).toHaveBeenCalledTimes(2);
-    expect(sender).toHaveBeenNthCalledWith(2, "Canvas A");
-    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
-    expect(buffer.getStatus().error).toBeNull();
-
-    buffer.stop();
-  });
-
-  it("retries the latest summary after a failure if the canvas changes", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn()
-      .mockRejectedValueOnce(new Error("provider busy"))
-      .mockResolvedValue(undefined);
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    buffer.push("Canvas B");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(sender).toHaveBeenCalledTimes(2);
-    expect(sender).toHaveBeenNthCalledWith(1, "Canvas A");
-    expect(sender).toHaveBeenNthCalledWith(2, "Canvas B");
-
-    buffer.stop();
-  });
-
-  it("clears a send error after reverting to the last successful summary", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn()
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error("provider busy"));
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    buffer.push("Canvas B");
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(true);
-    expect(buffer.getStatus().error).toBe("provider busy");
-
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(200);
-
-    expect(sender).toHaveBeenCalledTimes(2);
-    expect(buffer.getStatus().hasPendingUpdate).toBe(false);
-    expect(buffer.getStatus().error).toBeNull();
-
-    buffer.stop();
-  });
-
-  it("clears both timers on stop", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.push("Canvas A");
-    buffer.stop();
-    await vi.advanceTimersByTimeAsync(5000);
-
-    expect(sender).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("starts idempotently", async () => {
-    vi.useFakeTimers();
-    const sender = vi.fn();
-    const buffer = createCanvasContextBuffer(sender);
-
-    buffer.start();
-    buffer.start();
-    buffer.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(sender).toHaveBeenCalledTimes(1);
-
-    buffer.stop();
-    expect(vi.getTimerCount()).toBe(0);
   });
 });

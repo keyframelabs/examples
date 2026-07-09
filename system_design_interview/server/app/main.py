@@ -64,10 +64,6 @@ class Settings(BaseSettings):
         return origins or DEFAULT_CLIENT_ORIGINS
 
 
-class ErrorResponse(BaseModel):
-    error: str
-
-
 class HealthResponse(BaseModel):
     ok: bool
     service: str
@@ -103,14 +99,6 @@ class LiveSessionResponse(BaseModel):
     session_details: KeyframeSessionDetails = Field(alias="sessionDetails")
     voice_agent_details: VoiceAgentDetails = Field(alias="voiceAgentDetails")
     conversation_id: Optional[str] = Field(default=None, alias="conversationId")
-
-
-ERROR_RESPONSES = {
-    400: {"model": ErrorResponse},
-    500: {"model": ErrorResponse},
-    502: {"model": ErrorResponse},
-    504: {"model": ErrorResponse},
-}
 
 
 @lru_cache
@@ -149,7 +137,7 @@ async def generic_error_handler(_request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"error": "Internal server error."})
 
 
-@app.get("/health", response_model=HealthResponse, responses={500: {"model": ErrorResponse}})
+@app.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(ok=True, service=SERVICE_NAME)
 
@@ -158,7 +146,6 @@ async def health() -> HealthResponse:
     "/api/session",
     response_model=LiveSessionResponse,
     response_model_by_alias=True,
-    responses=ERROR_RESPONSES,
 )
 async def create_session() -> LiveSessionResponse:
     settings = get_settings()
