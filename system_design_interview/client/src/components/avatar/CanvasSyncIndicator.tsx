@@ -1,3 +1,4 @@
+import { Badge } from "@kfl-system-design/ui/components/badge";
 import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 
 type CanvasSyncIndicatorProps = {
@@ -10,12 +11,13 @@ export function CanvasSyncIndicator({ status }: CanvasSyncIndicatorProps) {
   }
 
   return (
-    <div
+    <Badge
       aria-live="polite"
-      className="pointer-events-none fixed bottom-4 right-4 z-30 inline-flex h-[42px] items-center rounded-lg border border-slate-200 bg-white/95 px-3 text-xs font-medium text-slate-700 shadow-toolbar backdrop-blur"
+      variant={status.error ? "destructive" : "outline"}
+      className="pointer-events-none fixed bottom-4 right-4 z-30 h-[42px] rounded-lg bg-card/95 px-3 text-muted-foreground shadow-toolbar backdrop-blur"
     >
       {getCanvasSyncPrimaryText(status)}
-    </div>
+    </Badge>
   );
 }
 

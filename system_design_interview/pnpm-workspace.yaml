@@ -1,5 +1,6 @@
 packages:
   - "client"
   - "infinite-canvas"
+  - "ui"
 allowBuilds:
   esbuild: true

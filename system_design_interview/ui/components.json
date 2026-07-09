@@ -6,14 +6,14 @@
   "iconLibrary": "lucide",
   "tailwind": {
     "config": "tailwind.config.ts",
-    "css": "../ui/src/styles.css",
+    "css": "src/styles.css",
     "baseColor": "slate",
     "cssVariables": true
   },
   "aliases": {
-    "components": "src/components",
-    "utils": "@kfl-system-design/ui/lib/utils",
-    "ui": "@kfl-system-design/ui/components",
-    "lib": "src/lib"
+    "components": "#components",
+    "utils": "#lib/utils",
+    "ui": "#components",
+    "lib": "#lib"
   }
 }

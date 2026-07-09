@@ -1,11 +1,11 @@
-export { SystemDesignCanvas } from "./components/SystemDesignCanvas";
-export { serializeCanvasToText } from "./serializer/serializeCanvas";
+export { SystemDesignCanvas } from "#/canvas/components/SystemDesignCanvas";
+export { serializeCanvasToText } from "#/canvas/serializer/serializeCanvas";
 export {
   canvasReducer,
   createConnection,
   createEmptyCanvasState,
   createNode
-} from "./model/state";
+} from "#/canvas/model/state";
 export type {
   CanvasConnection,
   CanvasConnectionCardinality,
@@ -14,4 +14,4 @@ export type {
   CanvasState,
   CanvasTextMetadata,
   CanvasTool
-} from "./model/types";
+} from "#/canvas/model/types";

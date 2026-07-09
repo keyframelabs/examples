@@ -23,12 +23,22 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent
 } from "react";
-import { Button } from "#/components/ui/button";
-import { Card } from "#/components/ui/card";
-import { Separator } from "#/components/ui/separator";
-import { Textarea } from "#/components/ui/textarea";
+import { Button } from "@kfl-system-design/ui/components/button";
+import { Card } from "@kfl-system-design/ui/components/card";
+import { Separator } from "@kfl-system-design/ui/components/separator";
+import { Textarea } from "@kfl-system-design/ui/components/textarea";
+import {
+  ToggleGroup,
+  ToggleGroupItem
+} from "@kfl-system-design/ui/components/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@kfl-system-design/ui/components/tooltip";
+import { cn } from "@kfl-system-design/ui/lib/utils";
 import { useCanvasHistory } from "#/canvas/hooks/useCanvasHistory";
-import { cn } from "#/lib/utils";
 import {
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_TOP,
@@ -215,6 +225,13 @@ const DOUBLE_CLICK_MAX_DISTANCE = 8;
 const CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS = 750;
 const CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS = 120;
 
+const themeToken = (name: string) => `hsl(var(${name}))`;
+const CANVAS_PRIMARY = themeToken("--primary");
+const CANVAS_ACCENT = themeToken("--accent");
+const CANVAS_CARD = themeToken("--card");
+const CANVAS_CONNECTION = themeToken("--canvas-connection");
+const CANVAS_CONNECTION_SELECTED = themeToken("--canvas-connection-selected");
+
 const nodeAnchors: CanvasNodeAnchor[] = [
   "top-left",
   "top",
@@ -236,19 +253,19 @@ const tableNodeAnchors: CanvasNodeAnchor[] = [
 ];
 
 const nodeFill: Record<CanvasNode["kind"], string> = {
-  actor: "#fff7ed",
-  service: "#f8fafc",
-  database: "#ecfeff",
-  table: "#fefce8",
+  actor: themeToken("--canvas-node-actor"),
+  service: themeToken("--canvas-node-service"),
+  database: themeToken("--canvas-node-database"),
+  table: themeToken("--canvas-node-table"),
   text: "transparent"
 };
 
 const nodeStroke: Record<CanvasNode["kind"], string> = {
-  actor: "#c2410c",
-  service: "#334155",
-  database: "#0f766e",
-  table: "#a16207",
-  text: "#64748b"
+  actor: themeToken("--canvas-node-actor-foreground"),
+  service: themeToken("--canvas-node-service-foreground"),
+  database: themeToken("--canvas-node-database-foreground"),
+  table: themeToken("--canvas-node-table-foreground"),
+  text: themeToken("--canvas-node-text")
 };
 
 export function SystemDesignCanvas({
@@ -971,7 +988,7 @@ export function SystemDesignCanvas({
 
   const gridStyle: CSSProperties = {
     backgroundImage:
-      "radial-gradient(circle, rgb(148 163 184 / 0.42) 1px, transparent 1.2px)",
+      "radial-gradient(circle, hsl(var(--canvas-grid) / 0.42) 1px, transparent 1.2px)",
     backgroundPosition: `${viewport.x}px ${viewport.y}px`,
     backgroundSize: `${24 * viewport.zoom}px ${24 * viewport.zoom}px`
   };
@@ -979,132 +996,174 @@ export function SystemDesignCanvas({
   return (
     <section
       className={cn(
-        "relative h-full min-h-[560px] select-none overflow-hidden bg-slate-50 text-slate-900",
+        "relative h-full min-h-[560px] select-none overflow-hidden bg-canvas-paper text-canvas-ink",
         className
       )}
       onDoubleClickCapture={handleCanvasDoubleClickCapture}
     >
-      <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 p-1">
-        {toolItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = tool === item.id;
-          return (
-            <Button
-              key={item.id}
-              title={item.label}
-              aria-label={item.label}
-              disabled={readonly}
-              variant="ghost"
-              size="icon"
-              active={isActive}
-              onClick={() => {
-                setTool(isActive ? "select" : item.id);
-                setConnectorSource(null);
-                setConnectionCreateDrag(null);
+      <TooltipProvider delayDuration={250}>
+        <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur">
+          <ToggleGroup
+            type="single"
+            value={tool}
+            onValueChange={(nextTool) => {
+              setTool((nextTool || "select") as CanvasTool);
+              setConnectorSource(null);
+              setConnectionCreateDrag(null);
+            }}
+          >
+            {toolItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Tooltip key={item.id}>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <ToggleGroupItem
+                        value={item.id}
+                        aria-label={item.label}
+                        disabled={readonly}
+                        size="icon"
+                      >
+                        <Icon size={18} />
+                      </ToggleGroupItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{item.label}</TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </ToggleGroup>
+          <Separator orientation="vertical" className="mx-1 h-7" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Undo"
+                disabled={!canUndo || readonly}
+                variant="ghost"
+                size="icon"
+                onClick={undo}
+              >
+                <Undo2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Undo</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Redo"
+                disabled={!canRedo || readonly}
+                variant="ghost"
+                size="icon"
+                onClick={redo}
+              >
+                <Redo2 size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Redo</TooltipContent>
+          </Tooltip>
+        </Card>
+
+        <Card className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-card/95 p-1 backdrop-blur">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Zoom out"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() =>
+                  zoomAt(
+                    window.innerWidth / 2,
+                    window.innerHeight / 2,
+                    viewport.zoom / 1.18
+                  )
+                }
+              >
+                <ZoomOut size={17} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom out</TooltipContent>
+          </Tooltip>
+          <div className="min-w-14 px-2 text-center text-sm font-medium tabular-nums text-muted-foreground">
+            {Math.round(viewport.zoom * 100)}%
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Zoom in"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() =>
+                  zoomAt(
+                    window.innerWidth / 2,
+                    window.innerHeight / 2,
+                    viewport.zoom * 1.18
+                  )
+                }
+              >
+                <ZoomIn size={17} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom in</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label="Reset view"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setViewport({ x: 150, y: 110, zoom: 1 })}
+              >
+                <Crosshair size={17} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Reset view</TooltipContent>
+          </Tooltip>
+        </Card>
+
+        {tool === "connector" && (
+          <Card className="absolute left-4 top-[72px] z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 bg-card/95 p-1 backdrop-blur">
+            <ToggleGroup
+              type="single"
+              value={connectionCardinality}
+              onValueChange={(nextCardinality) => {
+                if (nextCardinality) {
+                  setConnectionCardinality(
+                    nextCardinality as CanvasConnectionCardinality
+                  );
+                }
               }}
             >
-              <Icon size={18} />
-            </Button>
-          );
-        })}
-        <Separator orientation="vertical" className="mx-1" />
-        <Button
-          title="Undo"
-          aria-label="Undo"
-          disabled={!canUndo || readonly}
-          variant="ghost"
-          size="icon"
-          onClick={undo}
-        >
-          <Undo2 size={18} />
-        </Button>
-        <Button
-          title="Redo"
-          aria-label="Redo"
-          disabled={!canRedo || readonly}
-          variant="ghost"
-          size="icon"
-          onClick={redo}
-        >
-          <Redo2 size={18} />
-        </Button>
-      </Card>
-
-      <Card className="absolute bottom-4 left-4 z-20 flex items-center gap-1 p-1">
-        <Button
-          title="Zoom out"
-          aria-label="Zoom out"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() =>
-            zoomAt(
-              window.innerWidth / 2,
-              window.innerHeight / 2,
-              viewport.zoom / 1.18
-            )
-          }
-        >
-          <ZoomOut size={17} />
-        </Button>
-        <div className="min-w-14 px-2 text-center text-sm font-medium tabular-nums text-slate-700">
-          {Math.round(viewport.zoom * 100)}%
-        </div>
-        <Button
-          title="Zoom in"
-          aria-label="Zoom in"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() =>
-            zoomAt(
-              window.innerWidth / 2,
-              window.innerHeight / 2,
-              viewport.zoom * 1.18
-            )
-          }
-        >
-          <ZoomIn size={17} />
-        </Button>
-        <Button
-          title="Reset view"
-          aria-label="Reset view"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setViewport({ x: 150, y: 110, zoom: 1 })}
-        >
-          <Crosshair size={17} />
-        </Button>
-      </Card>
-
-      {tool === "connector" && (
-        <Card className="absolute left-4 top-[72px] z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 p-1">
-          {cardinalityItems.map((item) => {
-            const isActive = connectionCardinality === item.id;
-            return (
-              <Button
-                key={item.id}
-                title={item.label}
-                aria-label={item.label}
-                disabled={readonly}
-                variant="ghost"
-                size="sm"
-                active={isActive}
-                onClick={() => setConnectionCardinality(item.id)}
-                className="min-w-10 tabular-nums"
-              >
-                {item.shortLabel}
-              </Button>
-            );
-          })}
-          {connectorSource && (
-            <>
-              <Separator orientation="vertical" className="h-6" />
-              <div className="max-w-44 truncate px-2 text-xs font-medium text-teal-900">
-                {endpointDisplayName(state, connectorSource)} {"->"}
-              </div>
-            </>
-          )}
-        </Card>
-      )}
+              {cardinalityItems.map((item) => (
+                <Tooltip key={item.id}>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <ToggleGroupItem
+                        value={item.id}
+                        aria-label={item.label}
+                        disabled={readonly}
+                        size="sm"
+                        className="min-w-10 tabular-nums"
+                      >
+                        {item.shortLabel}
+                      </ToggleGroupItem>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{item.label}</TooltipContent>
+                </Tooltip>
+              ))}
+            </ToggleGroup>
+            {connectorSource && (
+              <>
+                <Separator orientation="vertical" className="h-6" />
+                <div className="max-w-44 truncate px-2 text-xs font-medium text-primary">
+                  {endpointDisplayName(state, connectorSource)} {"->"}
+                </div>
+              </>
+            )}
+          </Card>
+        )}
+      </TooltipProvider>
 
       <div
         ref={surfaceRef}
@@ -1136,7 +1195,7 @@ export function SystemDesignCanvas({
               refX="9"
               refY="3"
             >
-              <path d="M0,0 L0,6 L9,3 z" fill="#0f766e" />
+              <path d="M0,0 L0,6 L9,3 z" fill={CANVAS_PRIMARY} />
             </marker>
           </defs>
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
@@ -1285,7 +1344,7 @@ function renderNode({
   ) => void;
 }) {
   const isConnectorSource = connectorSource?.nodeId === node.id;
-  const stroke = isConnectorSource ? "#14b8a6" : nodeStroke[node.kind];
+  const stroke = isConnectorSource ? CANVAS_ACCENT : nodeStroke[node.kind];
   const strokeWidth = selected || isConnectorSource ? 2.5 : 1.4;
 
   return (
@@ -1362,7 +1421,7 @@ function renderNode({
           height={node.height - 20}
           value={node.label}
           align="center"
-          className="text-[15px] font-semibold text-slate-800"
+          className="text-[15px] font-semibold text-canvas-node-service-foreground"
           onClick={
             tool === "connector"
               ? () => onEndpointClick({ nodeId: node.id })
@@ -1385,7 +1444,7 @@ function renderNode({
           height={node.height + 10}
           rx={10}
           fill="none"
-          stroke="#0f766e"
+          stroke={CANVAS_PRIMARY}
           strokeDasharray="6 4"
           strokeWidth={1.5}
           pointerEvents="none"
@@ -1399,8 +1458,8 @@ function renderNode({
           width={12}
           height={12}
           rx={3}
-          fill="#0f766e"
-          stroke="#ffffff"
+          fill={CANVAS_PRIMARY}
+          stroke={CANVAS_CARD}
           strokeWidth={2}
           className="cursor-nwse-resize"
           onPointerDown={(event) => onResizePointerDown(event, node)}
@@ -1447,8 +1506,8 @@ function AttachmentPoints({
             cx={attachment.point.x}
             cy={attachment.point.y}
             r={isActive ? ATTACHMENT_POINT_RADIUS + 1.5 : ATTACHMENT_POINT_RADIUS}
-            fill={isActive ? "#0f766e" : "#ffffff"}
-            stroke={isActive ? "#0f766e" : "#14b8a6"}
+            fill={isActive ? CANVAS_PRIMARY : CANVAS_CARD}
+            stroke={isActive ? CANVAS_PRIMARY : CANVAS_ACCENT}
             strokeWidth={1.8}
             className="cursor-crosshair"
             onPointerDown={(event) => {
@@ -1506,7 +1565,7 @@ function DatabaseShape({
         height={node.height - cap - 22}
         value={node.label}
         align="center"
-        className="text-[15px] font-semibold text-teal-950"
+        className="text-[15px] font-semibold text-canvas-node-database-foreground"
         onDoubleClick={onTextDoubleClick}
         onPointerDown={onEndpointPointerDown}
       />
@@ -1543,7 +1602,12 @@ function TableShape({
         stroke={stroke}
         strokeWidth={strokeWidth}
       />
-      <rect width={node.width} height={TABLE_HEADER_HEIGHT} rx={8} fill="#fef3c7" />
+      <rect
+        width={node.width}
+        height={TABLE_HEADER_HEIGHT}
+        rx={8}
+        fill={themeToken("--canvas-node-table-header")}
+      />
       <path
         d={`M 0 ${TABLE_HEADER_HEIGHT} H ${node.width}`}
         stroke={stroke}
@@ -1556,7 +1620,7 @@ function TableShape({
         height={26}
         value={node.label}
         align="left"
-        className="text-[14px] font-bold text-amber-950"
+        className="text-[14px] font-bold text-canvas-node-table-foreground"
         onClick={isConnectorMode ? () => onEndpointClick({ nodeId: node.id }) : undefined}
         onDoubleClick={onTextDoubleClick}
         onPointerDown={
@@ -1571,13 +1635,13 @@ function TableShape({
         width={node.width - 24}
         height={node.height - TABLE_FIELD_TOP - 10}
       >
-        <div className="h-full overflow-hidden text-[13px] leading-5 text-slate-800">
+        <div className="h-full overflow-hidden text-[13px] leading-5 text-canvas-node-service-foreground">
           {node.fields.map((field) => (
             <button
               key={field.id}
               type="button"
-              className={`block w-full border-b border-amber-200/70 bg-transparent py-0.5 text-left text-inherit transition ${
-                isConnectorMode ? "cursor-crosshair hover:text-teal-800" : "cursor-move hover:text-slate-950"
+              className={`block w-full border-b border-canvas-node-table-foreground/20 bg-transparent py-0.5 text-left text-inherit transition ${
+                isConnectorMode ? "cursor-crosshair hover:text-primary" : "cursor-move hover:text-foreground"
               }`}
               style={{ height: TABLE_FIELD_HEIGHT }}
               onPointerDown={(event) => {
@@ -1639,7 +1703,7 @@ function TextShape({
         height={node.height}
         rx={6}
         fill="transparent"
-        stroke={selected ? "#0f766e" : "transparent"}
+        stroke={selected ? CANVAS_PRIMARY : "transparent"}
         strokeWidth={1.5}
       />
       <WrappedSvgText
@@ -1649,7 +1713,7 @@ function TextShape({
         height={node.height}
         value={node.label}
         align="left"
-        className="text-[16px] font-medium text-slate-700"
+        className="text-[16px] font-medium text-canvas-node-text"
         onDoubleClick={onTextDoubleClick}
       />
     </>
@@ -1784,7 +1848,7 @@ function renderConnection({
   });
   const showLabel = shouldRenderConnectionLabel(connection, fromNode, toNode);
   const showArrow = !usesRelationshipMarkers;
-  const stroke = selected ? "#0f766e" : "#475569";
+  const stroke = selected ? CANVAS_CONNECTION_SELECTED : CANVAS_CONNECTION;
   const strokeWidth = selected ? 2.8 : 2;
 
   return (
@@ -1833,7 +1897,7 @@ function renderConnection({
       {showLabel && (
         <foreignObject x={mid.x - 78} y={mid.y - 17} width={156} height={34}>
           <div className="flex h-full items-center justify-center">
-            <span className="max-w-[150px] truncate rounded border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm">
+            <span className="max-w-[150px] truncate rounded border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground shadow-sm">
               {connection.label}
             </span>
           </div>
@@ -1913,7 +1977,7 @@ function renderConnectionCreatePreview({
   const path = roundedOrthogonalPath(
     routedConnectorPoints(pathStartAnchor, pathEndAnchor)
   );
-  const stroke = "#0f766e";
+  const stroke = CANVAS_PRIMARY;
   const strokeWidth = 2.4;
 
   return (
@@ -1960,8 +2024,8 @@ function ConnectionEndpointHandle({
       cx={point.x}
       cy={point.y}
       r={6}
-      fill="#ffffff"
-      stroke="#0f766e"
+      fill={CANVAS_CARD}
+      stroke={CANVAS_PRIMARY}
       strokeWidth={2}
       className="cursor-grab"
       onPointerDown={onPointerDown}
@@ -2026,7 +2090,7 @@ function RelationshipEndpointMarker({
               cx={center.x}
               cy={center.y}
               r={ERD_CIRCLE_RADIUS}
-              fill="white"
+              fill={CANVAS_CARD}
             />
           );
         }
@@ -2123,7 +2187,7 @@ function renderCardinalityMenu({
 
   return (
     <Card
-      className="fixed z-40 w-[232px] p-2"
+      className="fixed z-40 w-[232px] bg-card/95 p-2 backdrop-blur"
       style={{
         left: menu.x,
         top: menu.y
@@ -2133,34 +2197,42 @@ function renderCardinalityMenu({
       }}
     >
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <div className="text-xs font-semibold uppercase text-slate-500">
+        <div className="text-xs font-semibold uppercase text-muted-foreground">
           Relationship
         </div>
-        <button
+        <Button
           type="button"
-          className="rounded px-1.5 py-0.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-1.5 text-xs"
           onClick={onClose}
         >
           Close
-        </button>
+        </Button>
       </div>
-      <div className="grid grid-cols-2 gap-1">
+      <ToggleGroup
+        type="single"
+        value={connection.cardinality ?? "one-to-one"}
+        onValueChange={(nextCardinality) => {
+          if (nextCardinality) {
+            onSelect(nextCardinality as CanvasConnectionCardinality);
+          }
+        }}
+        className="grid grid-cols-2 gap-1"
+      >
         {cardinalityItems.map((item) => (
-          <Button
+          <ToggleGroupItem
             key={item.id}
-            type="button"
-            variant="ghost"
+            value={item.id}
             size="sm"
-            active={(connection.cardinality ?? "one-to-one") === item.id}
             title={item.label}
             aria-label={item.label}
             className="justify-center tabular-nums"
-            onClick={() => onSelect(item.id)}
           >
             {item.shortLabel}
-          </Button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
     </Card>
   );
 }
@@ -2229,7 +2301,7 @@ function renderEditorOverlay({
           setEditing(null);
         }
       }}
-      className="absolute z-30 resize-none select-text border-2 border-teal-700 bg-white/95 p-2 shadow-toolbar"
+      className="absolute z-30 resize-none select-text border-2 border-primary bg-card/95 p-2 shadow-toolbar"
       style={{
         left: clampedTopLeft.x,
         top: clampedTopLeft.y,

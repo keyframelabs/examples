@@ -22,8 +22,8 @@ pnpm build
 - Package manager: pnpm 11
 - App runtime: React 18 with TypeScript
 - Build tool/dev server: Vite 6
-- UI layer: local shadcn-style React primitives in `src/components/ui`
-- Styling engine: Tailwind CSS 3 with plain CSS globals
+- UI layer: shared shadcn primitives from `@kfl-system-design/ui/components/*`
+- Styling engine: Tailwind CSS 3 with CSS-variable theme tokens
 - Icons: lucide-react
 - Canvas rendering: SVG plus HTML `foreignObject` overlays for wrapped/editable text
 - State: deterministic reducer-based canvas model in plain TypeScript

@@ -6,6 +6,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": new URL("./src", import.meta.url).pathname,
+      // The canvas package is source-linked, so its package-scoped imports need resolution here.
       "#": new URL("../infinite-canvas/src", import.meta.url).pathname
     },
     dedupe: ["react", "react-dom"]

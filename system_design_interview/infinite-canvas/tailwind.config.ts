@@ -1,22 +1,16 @@
 import type { Config } from "tailwindcss";
+import uiPreset from "@kfl-system-design/ui/tailwind-preset";
 
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  theme: {
-    extend: {
-      colors: {
-        canvas: {
-          paper: "#f8fafc",
-          ink: "#172033",
-          grid: "#d9e2ec",
-          accent: "#0f766e",
-          amber: "#b7791f"
-        }
-      },
-      boxShadow: {
-        toolbar: "0 10px 30px rgb(15 23 42 / 0.12)"
-      }
-    }
+  presets: [uiPreset],
+  content: {
+    relative: true,
+    files: [
+      "./index.html",
+      "./src/**/*.{ts,tsx}",
+      // Shared shadcn primitives contribute Tailwind classes from the ui package.
+      "../ui/src/**/*.{ts,tsx}"
+    ]
   },
   plugins: []
 } satisfies Config;

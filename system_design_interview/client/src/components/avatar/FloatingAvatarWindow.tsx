@@ -9,6 +9,12 @@ import {
   PhoneOff,
   RadioTower
 } from "lucide-react";
+import { Alert, AlertDescription } from "@kfl-system-design/ui/components/alert";
+import { Badge } from "@kfl-system-design/ui/components/badge";
+import { Button } from "@kfl-system-design/ui/components/button";
+import { Card } from "@kfl-system-design/ui/components/card";
+import { ScrollArea } from "@kfl-system-design/ui/components/scroll-area";
+import { cn } from "@kfl-system-design/ui/lib/utils";
 import { createLiveSession } from "@/lib/api";
 import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 import {
@@ -53,7 +59,7 @@ export function FloatingAvatarWindow({
   canvasText,
   onCanvasSyncStatusChange
 }: FloatingAvatarWindowProps) {
-  const panelRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<PersonaViewRuntime | null>(null);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
@@ -409,26 +415,41 @@ export function FloatingAvatarWindow({
       className="fixed left-0 top-0 z-40"
       style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
     >
-      <section
+      <Card
         ref={panelRef}
-        className={`${minimized ? "w-[min(260px,calc(100vw-24px))]" : "w-[min(392px,calc(100vw-24px))]"} overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-900 shadow-float`}
+        className={cn(
+          minimized
+            ? "w-[min(260px,calc(100vw-24px))]"
+            : "w-[min(392px,calc(100vw-24px))]",
+          "overflow-hidden rounded-lg bg-card text-card-foreground shadow-float"
+        )}
       >
         <div
-          className="flex h-12 cursor-move touch-none items-center gap-2 border-b border-slate-200 bg-slate-950 px-3 text-white"
+          className="flex h-12 cursor-move touch-none items-center gap-2 border-b border-border bg-foreground px-3 text-background"
           onPointerDown={handleHeaderPointerDown}
           onPointerMove={handleHeaderPointerMove}
           onPointerUp={handleHeaderPointerUp}
           onPointerCancel={handleHeaderPointerUp}
         >
-          <GripHorizontal className="size-4 shrink-0 text-white/55" />
-          <RadioTower className="size-4 shrink-0 text-cyan-200" />
+          <GripHorizontal className="size-4 shrink-0 text-background/55" />
+          <RadioTower className="size-4 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">Lyra</div>
-            <div className="truncate text-[11px] text-white/60">{statusText} / {subtitle}</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-sm font-semibold">Lyra</div>
+              <Badge
+                variant={error ? "destructive" : isConnected ? "default" : "secondary"}
+                className="h-5 shrink-0 px-1.5 py-0 text-[10px]"
+              >
+                {statusText}
+              </Badge>
+            </div>
+            <div className="truncate text-[11px] text-background/60">{subtitle}</div>
           </div>
-          <button
+          <Button
             type="button"
-            className="grid size-8 shrink-0 place-items-center rounded-md text-white/80 hover:bg-white/10 hover:text-white"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 text-background/80 hover:bg-background/10 hover:text-background"
             aria-label={minimized ? "Restore avatar window" : "Minimize avatar window"}
             title={minimized ? "Restore" : "Minimize"}
             onPointerDown={(event) => {
@@ -437,30 +458,30 @@ export function FloatingAvatarWindow({
             onClick={() => setMinimized((current) => !current)}
           >
             {minimized ? <Maximize2 className="size-4" /> : <Minus className="size-4" />}
-          </button>
+          </Button>
         </div>
 
         {!minimized ? (
           <div className="grid gap-3 p-3">
-            <div className="relative aspect-square min-h-[300px] overflow-hidden rounded-md bg-[#101418]">
+            <div className="relative aspect-square min-h-[300px] overflow-hidden rounded-md bg-canvas-avatar-surface">
               <div ref={containerRef} className="h-full w-full overflow-hidden" />
               {!isConnected ? (
                 <div className="absolute inset-0 grid place-items-center px-5 text-center">
                   <div>
-                    <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-white/10 text-white">
+                    <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-background/10 text-background">
                       <Mic className="size-5" />
                     </div>
-                    <p className="text-sm font-medium text-white">Live interviewer</p>
-                    <p className="mt-1 text-xs text-white/60">System design interview</p>
+                    <p className="text-sm font-medium text-background">Live interviewer</p>
+                    <p className="mt-1 text-xs text-background/60">System design interview</p>
                   </div>
                 </div>
               ) : null}
             </div>
 
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
-                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="flex-1 font-semibold"
                 onMouseEnter={preloadPersonaElements}
                 onFocus={preloadPersonaElements}
                 onClick={() => {
@@ -470,10 +491,11 @@ export function FloatingAvatarWindow({
               >
                 {isConnecting ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
                 Start
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                variant="outline"
+                className="flex-1 font-semibold"
                 onClick={() => {
                   void endCall();
                 }}
@@ -481,26 +503,28 @@ export function FloatingAvatarWindow({
               >
                 <PhoneOff className="size-4" />
                 End
-              </button>
+              </Button>
             </div>
 
             {error ? (
-              <div className="flex gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <span>{error}</span>
-              </div>
+              <Alert variant="destructive">
+                <AlertCircle className="size-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             ) : null}
 
             {showConnectionLog && events.length > 0 ? (
-              <div className="max-h-28 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-                {events.map((event) => (
-                  <div key={event}>{event}</div>
-                ))}
-              </div>
+              <ScrollArea className="h-28 rounded-md border bg-muted text-xs text-muted-foreground">
+                <div className="p-2">
+                  {events.map((event) => (
+                    <div key={event}>{event}</div>
+                  ))}
+                </div>
+              </ScrollArea>
             ) : null}
           </div>
         ) : null}
-      </section>
+      </Card>
     </div>
   );
 

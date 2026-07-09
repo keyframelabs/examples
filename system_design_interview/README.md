@@ -5,6 +5,7 @@ This demo pairs the reusable infinite canvas with a floating Keyframe Labs avata
 ## Structure
 
 - `client/` owns the system design interview UI.
+- `ui/` owns shared shadcn primitives, CSS theme tokens, and the Tailwind preset.
 - `server/` creates Keyframe sessions and ElevenLabs signed URLs without exposing provider secrets to the browser.
 - `infinite-canvas/` remains a standalone, testable canvas package that exports the canvas, serializer, types, and contextual-update adapter.
 
