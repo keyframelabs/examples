@@ -1,4 +1,4 @@
-import type { CanvasSyncStatus } from "../../types/canvas-sync-status";
+import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 
 type CanvasSyncIndicatorProps = {
   status: CanvasSyncStatus;

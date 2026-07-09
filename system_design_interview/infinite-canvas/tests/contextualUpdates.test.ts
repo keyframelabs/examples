@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createContextualUpdateAdapter } from "../src/integration/contextualUpdates";
+import { createContextualUpdateAdapter } from "#/integration/contextualUpdates";
 import type {
   CanvasConnectionCardinality,
   CanvasElement,
   CanvasState
-} from "../src/canvas/model/types";
+} from "#/canvas/model/types";
 
 describe("createContextualUpdateAdapter", () => {
   it("sends serialized canvas context through the injected sender", async () => {

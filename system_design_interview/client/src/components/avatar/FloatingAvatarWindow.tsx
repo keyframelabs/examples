@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { PersonaView } from "@keyframelabs/elements";
 import {
   AlertCircle,
   GripHorizontal,
@@ -10,20 +9,20 @@ import {
   PhoneOff,
   RadioTower
 } from "lucide-react";
-import { createLiveSession } from "../../lib/api";
-import type { CanvasSyncStatus } from "../../types/canvas-sync-status";
+import { createLiveSession } from "@/lib/api";
+import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 import {
   createCanvasContextSync,
   type CanvasContextSyncStatus
-} from "../../utils/avatar/canvasContextSync";
+} from "@/utils/avatar/canvasContextSync";
 import {
   attachPersonaTranscriptObserver,
   cleanupPersonaViewRuntime,
   type PersonaViewRuntime,
   sendPersonaContext
-} from "../../utils/avatar/personaViewRuntime";
+} from "@/utils/avatar/personaViewRuntime";
 
-export type { CanvasSyncStatus } from "../../types/canvas-sync-status";
+export type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 
 type FloatingAvatarWindowProps = {
   canvasText: string;
@@ -45,6 +44,10 @@ const PANEL_WIDTH = 392;
 const PANEL_HEIGHT = 500;
 const MINIMIZED_WIDTH = 260;
 const MINIMIZED_HEIGHT = 56;
+
+type PersonaElementsModule = typeof import("@keyframelabs/elements");
+
+let personaElementsPromise: Promise<PersonaElementsModule> | null = null;
 
 export function FloatingAvatarWindow({
   canvasText,
@@ -148,7 +151,12 @@ export function FloatingAvatarWindow({
     try {
       await cleanupRuntime();
       setContextSyncReadyValue(false);
-      const liveSession = await createLiveSession();
+      const personaElementsModulePromise = loadPersonaElements();
+      const liveSessionPromise = createLiveSession();
+      const [liveSession, { PersonaView }] = await Promise.all([
+        liveSessionPromise,
+        personaElementsModulePromise
+      ]);
       const container = containerRef.current;
       if (!container) {
         throw new Error("Avatar container is not ready.");
@@ -453,6 +461,8 @@ export function FloatingAvatarWindow({
               <button
                 type="button"
                 className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                onMouseEnter={preloadPersonaElements}
+                onFocus={preloadPersonaElements}
                 onClick={() => {
                   void connect();
                 }}
@@ -509,6 +519,18 @@ export function FloatingAvatarWindow({
     contextSyncReadyRef.current = nextReady;
     setContextSyncReady(nextReady);
   }
+}
+
+function loadPersonaElements(): Promise<PersonaElementsModule> {
+  personaElementsPromise ??= import("@keyframelabs/elements").catch((err) => {
+    personaElementsPromise = null;
+    throw err;
+  });
+  return personaElementsPromise;
+}
+
+function preloadPersonaElements(): void {
+  void loadPersonaElements().catch(() => undefined);
 }
 
 function clearContainer(container: HTMLElement) {

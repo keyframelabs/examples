@@ -23,12 +23,12 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent
 } from "react";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { Separator } from "../../components/ui/separator";
-import { Textarea } from "../../components/ui/textarea";
-import { cn } from "../../lib/utils";
-import { useCanvasHistory } from "../hooks/useCanvasHistory";
+import { Button } from "#/components/ui/button";
+import { Card } from "#/components/ui/card";
+import { Separator } from "#/components/ui/separator";
+import { Textarea } from "#/components/ui/textarea";
+import { useCanvasHistory } from "#/canvas/hooks/useCanvasHistory";
+import { cn } from "#/lib/utils";
 import {
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_TOP,
@@ -38,7 +38,7 @@ import {
   isConnection,
   isNode,
   parseTableEditorValue
-} from "../model/state";
+} from "#/canvas/model/state";
 import type {
   CanvasConnectionCardinality,
   CanvasConnection,
@@ -51,8 +51,8 @@ import type {
   CanvasTableNode,
   CanvasTextMetadata,
   CanvasTool
-} from "../model/types";
-import { serializeCanvasToText } from "../serializer/serializeCanvas";
+} from "#/canvas/model/types";
+import { serializeCanvasToText } from "#/canvas/serializer/serializeCanvas";
 
 interface Point {
   x: number;
@@ -212,6 +212,8 @@ const ATTACHMENT_HIT_RADIUS = 18;
 const ATTACHMENT_POINT_RADIUS = 4.5;
 const DOUBLE_CLICK_MAX_MS = 420;
 const DOUBLE_CLICK_MAX_DISTANCE = 8;
+const CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS = 750;
+const CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS = 120;
 
 const nodeAnchors: CanvasNodeAnchor[] = [
   "top-left",
@@ -288,19 +290,67 @@ export function SystemDesignCanvas({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const lastPointerPressRef = useRef<PointerPressState | null>(null);
+  const pendingCanvasTextFlushRef = useRef<(() => void) | null>(null);
+  const latestCanvasTextStateRef = useRef(state);
+  const latestCanvasTextChangeRef = useRef(onCanvasTextChange);
 
-  const orderedElements = useMemo(
-    () => state.order.map((id) => state.elements[id]).filter(Boolean),
+  const { nodes, connections } = useMemo(
+    () => {
+      const nextNodes: CanvasNode[] = [];
+      const nextConnections: CanvasConnection[] = [];
+
+      for (const id of state.order) {
+        const element = state.elements[id];
+        if (!element) continue;
+
+        if (isNode(element)) {
+          nextNodes.push(element);
+        } else if (isConnection(element)) {
+          nextConnections.push(element);
+        }
+      }
+
+      return { nodes: nextNodes, connections: nextConnections };
+    },
     [state.elements, state.order]
   );
-  const nodes = orderedElements.filter(isNode);
-  const connections = orderedElements.filter(isConnection);
+  const selectedIdSet = useMemo(
+    () => new Set(state.selectedIds),
+    [state.selectedIds]
+  );
 
   useEffect(() => {
     onCanvasChange?.(state);
-    const serialized = serializeCanvasToText(state);
-    onCanvasTextChange?.(serialized.text, serialized.metadata);
-  }, [onCanvasChange, onCanvasTextChange, state]);
+  }, [onCanvasChange, state]);
+
+  useEffect(() => {
+    latestCanvasTextStateRef.current = state;
+    latestCanvasTextChangeRef.current = onCanvasTextChange;
+
+    if (!onCanvasTextChange) {
+      pendingCanvasTextFlushRef.current?.();
+      pendingCanvasTextFlushRef.current = null;
+      return;
+    }
+
+    if (pendingCanvasTextFlushRef.current) return;
+
+    pendingCanvasTextFlushRef.current = scheduleCanvasTextSerialization(() => {
+      pendingCanvasTextFlushRef.current = null;
+      const callback = latestCanvasTextChangeRef.current;
+      if (!callback) return;
+
+      const serialized = serializeCanvasToText(latestCanvasTextStateRef.current);
+      callback(serialized.text, serialized.metadata);
+    });
+  }, [onCanvasTextChange, state]);
+
+  useEffect(() => {
+    return () => {
+      pendingCanvasTextFlushRef.current?.();
+      pendingCanvasTextFlushRef.current = null;
+    };
+  }, []);
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number): Point => {
@@ -664,10 +714,11 @@ export function SystemDesignCanvas({
       return;
     }
 
-    const ids = state.selectedIds.includes(element.id)
+    const isSelected = selectedIdSet.has(element.id);
+    const ids = isSelected
       ? state.selectedIds
       : [element.id];
-    if (!state.selectedIds.includes(element.id)) {
+    if (!isSelected) {
       apply({ type: "select", ids });
     }
 
@@ -1094,7 +1145,7 @@ export function SystemDesignCanvas({
                 connection,
                 state,
                 dragState: connectionDrag,
-                selected: state.selectedIds.includes(connection.id),
+                selected: selectedIdSet.has(connection.id),
                 onPointerDown: handleElementPointerDown,
                 onDoubleClick: handleConnectionDoubleClick,
                 onEndpointPointerDown: handleConnectionEndpointPointerDown
@@ -1109,7 +1160,7 @@ export function SystemDesignCanvas({
             {nodes.map((node) =>
               renderNode({
                 node,
-                selected: state.selectedIds.includes(node.id),
+                selected: selectedIdSet.has(node.id),
                 connectorSource,
                 tool,
                 showAttachmentPoints:
@@ -1170,6 +1221,34 @@ export function SystemDesignCanvas({
         })}
     </section>
   );
+}
+
+function scheduleCanvasTextSerialization(callback: () => void): () => void {
+  if (typeof window === "undefined") {
+    const handle = globalThis.setTimeout(callback, 0);
+    return () => globalThis.clearTimeout(handle);
+  }
+
+  const idleScheduler = window as unknown as {
+    requestIdleCallback?: (
+      callback: IdleRequestCallback,
+      options?: IdleRequestOptions
+    ) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+
+  if (typeof idleScheduler.requestIdleCallback === "function") {
+    const handle = idleScheduler.requestIdleCallback(callback, {
+      timeout: CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS
+    });
+    return () => idleScheduler.cancelIdleCallback?.(handle);
+  }
+
+  const handle = globalThis.setTimeout(
+    callback,
+    CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS
+  );
+  return () => globalThis.clearTimeout(handle);
 }
 
 function renderNode({
@@ -2380,16 +2459,6 @@ function localAttachmentPointsForNode(node: CanvasNode): AttachmentPoint[] {
   return points;
 }
 
-function worldAttachmentPointsForNode(node: CanvasNode): AttachmentPoint[] {
-  return localAttachmentPointsForNode(node).map((attachment) => ({
-    ...attachment,
-    point: {
-      x: node.x + attachment.point.x,
-      y: node.y + attachment.point.y
-    }
-  }));
-}
-
 function nearestAttachmentPoint(
   point: Point,
   nodes: CanvasNode[]
@@ -2397,12 +2466,37 @@ function nearestAttachmentPoint(
   let nearest: AttachmentPoint | null = null;
   let nearestDistance = Number.POSITIVE_INFINITY;
 
+  const considerAttachment = (
+    id: string,
+    attachmentPoint: Point,
+    endpoint: ConnectionEndpoint
+  ) => {
+    const nextDistance = distance(point, attachmentPoint);
+    if (nextDistance < nearestDistance) {
+      nearest = { id, point: attachmentPoint, endpoint };
+      nearestDistance = nextDistance;
+    }
+  };
+
   for (const node of nodes) {
-    for (const attachment of worldAttachmentPointsForNode(node)) {
-      const nextDistance = distance(point, attachment.point);
-      if (nextDistance < nearestDistance) {
-        nearest = attachment;
-        nearestDistance = nextDistance;
+    for (const anchor of anchorsForNode(node)) {
+      considerAttachment(`node-${anchor}`, nodeAnchorPoint(node, anchor), {
+        nodeId: node.id,
+        anchor
+      });
+    }
+
+    if (node.kind === "table") {
+      for (const field of node.fields) {
+        for (const side of ["left", "right"] satisfies CanvasFieldSide[]) {
+          const fieldPoint = tableFieldSidePoint(node, field.id, side);
+          if (!fieldPoint) continue;
+          considerAttachment(`field-${field.id}-${side}`, fieldPoint, {
+            nodeId: node.id,
+            fieldId: field.id,
+            fieldSide: side
+          });
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
-import { serializeCanvasToText } from "../canvas/serializer/serializeCanvas";
-import type { CanvasState } from "../canvas/model/types";
+import type { CanvasState } from "#/canvas/model/types";
+import { serializeCanvasToText } from "#/canvas/serializer/serializeCanvas";
 
 export const DEFAULT_CONTEXTUAL_UPDATE_INTERVAL_MS = 7000;
 export const MIN_CONTEXTUAL_UPDATE_INTERVAL_MS = 5000;

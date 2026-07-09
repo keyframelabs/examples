@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
 import { SystemDesignCanvas } from "@kfl-system-design/infinite-canvas";
 
-import { CanvasSyncIndicator } from "./components/avatar/CanvasSyncIndicator";
-import { FloatingAvatarWindow } from "./components/avatar/FloatingAvatarWindow";
-import type { CanvasSyncStatus } from "./types/canvas-sync-status";
-import { initialSystemDesignCanvas } from "./utils/interview/initialCanvas";
+import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
+import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
+import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
+import { initialSystemDesignCanvas } from "@/utils/interview/initialCanvas";
 
 const initialCanvasSyncStatus: CanvasSyncStatus = {
   isReady: false,

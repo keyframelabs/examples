@@ -1,13 +1,13 @@
 import type { PersonaView } from "@keyframelabs/elements";
 import { describe, expect, it, vi } from "vitest";
 
-import type { CanvasContextSync } from "./canvasContextSync";
+import type { CanvasContextSync } from "@/utils/avatar/canvasContextSync";
 import {
   attachPersonaTranscriptObserver,
   cleanupPersonaViewRuntime,
   type PersonaViewRuntime,
   sendPersonaContext
-} from "./personaViewRuntime";
+} from "@/utils/avatar/personaViewRuntime";
 
 describe("sendPersonaContext", () => {
   it("sends context through the PersonaView-owned voice agent when supported", () => {

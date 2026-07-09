@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
-import { SystemDesignCanvas } from "../canvas";
-import type { CanvasState, CanvasTextMetadata } from "../canvas";
+import { SystemDesignCanvas } from "#/canvas";
+import type { CanvasState, CanvasTextMetadata } from "#/canvas";
 
 const initialState: CanvasState = {
   version: 8,

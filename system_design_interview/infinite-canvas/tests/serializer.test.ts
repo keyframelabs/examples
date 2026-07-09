@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { serializeCanvasToText } from "../src/canvas/serializer/serializeCanvas";
+import { serializeCanvasToText } from "#/canvas/serializer/serializeCanvas";
 import {
   CANVAS_SCHEMA_VERSION,
   type CanvasElement,
   type CanvasState
-} from "../src/canvas/model/types";
+} from "#/canvas/model/types";
 
 describe("serializeCanvasToText", () => {
   it("serializes an empty canvas", () => {

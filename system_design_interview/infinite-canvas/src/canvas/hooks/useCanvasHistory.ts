@@ -3,8 +3,8 @@ import {
   canvasReducer,
   createEmptyCanvasState,
   type CanvasAction
-} from "../model/state";
-import type { CanvasState } from "../model/types";
+} from "#/canvas/model/state";
+import type { CanvasState } from "#/canvas/model/types";
 
 interface CanvasHistory {
   past: CanvasState[];

@@ -1,6 +1,6 @@
 import type { PersonaView } from "@keyframelabs/elements";
 
-import type { CanvasContextSync } from "./canvasContextSync";
+import type { CanvasContextSync } from "@/utils/avatar/canvasContextSync";
 
 export type PersonaTranscript = {
   role: "user" | "assistant";

@@ -8,7 +8,7 @@ import {
   createNode,
   parseTableEditorValue,
   tableHeightForFields
-} from "../src/canvas/model/state";
+} from "#/canvas/model/state";
 
 describe("canvas state model", () => {
   it("adds and selects nodes deterministically", () => {
