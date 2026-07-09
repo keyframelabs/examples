@@ -5,9 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "dev": "concurrently -k -n server,client -c cyan,green \"pnpm --filter @kfl-system-design/server dev\" \"pnpm --filter @kfl-system-design/client dev\"",
+    "dev": "concurrently -k -n server,client -c cyan,green \"uv run uvicorn app.main:app --app-dir server --host localhost --port ${PORT:-8788}\" \"VITE_API_BASE_URL=http://localhost:${PORT:-8788} pnpm --filter @kfl-system-design/client dev\"",
     "build": "pnpm typecheck && pnpm --filter @kfl-system-design/client build",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm -r --if-present test && uv run pytest",
+    "server:test": "uv run pytest",
+    "server:lint": "uv run ruff check server",
+    "server:format:check": "uv run ruff format --check server",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {

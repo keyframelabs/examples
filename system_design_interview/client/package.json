@@ -4,15 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5174",
+    "dev": "vite --host localhost --port 5174",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 5174",
+    "preview": "vite preview --host localhost --port 5174",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@keyframelabs/elements": "^0.5.1",
-    "@keyframelabs/sdk": "^0.2.0",
     "@kfl-system-design/infinite-canvas": "workspace:*",
     "@vitejs/plugin-react": "^4.6.0",
     "lucide-react": "^0.525.0",

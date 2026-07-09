@@ -10,7 +10,7 @@ describe("createCanvasContextSync", () => {
     vi.useRealTimers();
   });
 
-  it("sends versioned ElevenLabs contextual update payloads on the buffered cadence", async () => {
+  it("sends versioned persona contextual update payloads on the buffered cadence", async () => {
     vi.useFakeTimers();
     const sendContextUpdate = vi.fn();
     const sync = createCanvasContextSync({ sendContextUpdate });

@@ -38,7 +38,10 @@ function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {
     && typeof value.sessionDetails.participant_token === "string"
     && typeof value.sessionDetails.agent_identity === "string"
     && value.voiceAgentDetails.type === "elevenlabs"
-    && typeof value.voiceAgentDetails.signed_url === "string";
+    && (
+      typeof value.voiceAgentDetails.signed_url === "string"
+      || typeof value.voiceAgentDetails.agent_id === "string"
+    );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
