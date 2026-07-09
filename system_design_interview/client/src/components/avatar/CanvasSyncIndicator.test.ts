@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CanvasSyncStatus } from "./canvasSyncStatus";
-import { getCanvasSyncPrimaryText } from "./canvasSyncStatusLabel";
+import type { CanvasSyncStatus } from "../../types/canvas-sync-status";
+import { getCanvasSyncPrimaryText } from "./CanvasSyncIndicator";
 
 const readyStatus: CanvasSyncStatus = {
   isReady: true,
