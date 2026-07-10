@@ -5,12 +5,12 @@ import { createContext, forwardRef, useContext } from "react";
 import { cn } from "@/lib/utils";
 
 const toggleGroupVariants = cva(
-  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground",
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground",
   {
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-input bg-background shadow-sm hover:bg-accent"
+        outline: "border border-input bg-background shadow-xs hover:bg-accent"
       },
       size: {
         default: "h-9 px-3",

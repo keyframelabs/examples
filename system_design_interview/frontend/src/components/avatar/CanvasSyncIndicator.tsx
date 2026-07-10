@@ -14,7 +14,7 @@ export function CanvasSyncIndicator({ status }: CanvasSyncIndicatorProps) {
     <Badge
       aria-live="polite"
       variant={status.error ? "destructive" : "outline"}
-      className="pointer-events-none fixed bottom-4 right-4 z-30 h-[42px] rounded-lg bg-card/95 px-3 text-muted-foreground shadow-toolbar backdrop-blur"
+      className="pointer-events-none fixed bottom-4 right-4 z-30 h-[42px] rounded-lg bg-card/95 px-3 text-muted-foreground shadow-toolbar backdrop-blur-sm"
     >
       {getCanvasSyncPrimaryText(status)}
     </Badge>

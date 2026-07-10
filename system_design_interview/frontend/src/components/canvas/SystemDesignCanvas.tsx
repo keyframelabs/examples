@@ -225,12 +225,11 @@ const DOUBLE_CLICK_MAX_DISTANCE = 8;
 const CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS = 750;
 const CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS = 120;
 
-const themeToken = (name: string) => `hsl(var(${name}))`;
-const CANVAS_PRIMARY = themeToken("--primary");
-const CANVAS_ACCENT = themeToken("--accent");
-const CANVAS_CARD = themeToken("--card");
-const CANVAS_CONNECTION = themeToken("--canvas-connection");
-const CANVAS_CONNECTION_SELECTED = themeToken("--canvas-connection-selected");
+const CANVAS_PRIMARY = "var(--primary)";
+const CANVAS_ACCENT = "var(--accent)";
+const CANVAS_CARD = "var(--card)";
+const CANVAS_CONNECTION = "var(--canvas-connection)";
+const CANVAS_CONNECTION_SELECTED = "var(--canvas-connection-selected)";
 
 const nodeAnchors: CanvasNodeAnchor[] = [
   "top-left",
@@ -253,19 +252,19 @@ const tableNodeAnchors: CanvasNodeAnchor[] = [
 ];
 
 const nodeFill: Record<CanvasNode["kind"], string> = {
-  actor: themeToken("--canvas-node-actor"),
-  service: themeToken("--canvas-node-service"),
-  database: themeToken("--canvas-node-database"),
-  table: themeToken("--canvas-node-table"),
+  actor: "var(--canvas-node-actor)",
+  service: "var(--canvas-node-service)",
+  database: "var(--canvas-node-database)",
+  table: "var(--canvas-node-table)",
   text: "transparent"
 };
 
 const nodeStroke: Record<CanvasNode["kind"], string> = {
-  actor: themeToken("--canvas-node-actor-foreground"),
-  service: themeToken("--canvas-node-service-foreground"),
-  database: themeToken("--canvas-node-database-foreground"),
-  table: themeToken("--canvas-node-table-foreground"),
-  text: themeToken("--canvas-node-text")
+  actor: "var(--canvas-node-actor-foreground)",
+  service: "var(--canvas-node-service-foreground)",
+  database: "var(--canvas-node-database-foreground)",
+  table: "var(--canvas-node-table-foreground)",
+  text: "var(--canvas-node-text)"
 };
 
 export function SystemDesignCanvas({
@@ -988,7 +987,7 @@ export function SystemDesignCanvas({
 
   const gridStyle: CSSProperties = {
     backgroundImage:
-      "radial-gradient(circle, hsl(var(--canvas-grid) / 0.42) 1px, transparent 1.2px)",
+      "radial-gradient(circle, var(--canvas-grid-dot) 1px, transparent 1.2px)",
     backgroundPosition: `${viewport.x}px ${viewport.y}px`,
     backgroundSize: `${24 * viewport.zoom}px ${24 * viewport.zoom}px`
   };
@@ -1002,7 +1001,7 @@ export function SystemDesignCanvas({
       onDoubleClickCapture={handleCanvasDoubleClickCapture}
     >
       <TooltipProvider delayDuration={250}>
-        <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur">
+        <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur-sm">
           <ToggleGroup
             type="single"
             value={tool}
@@ -1064,7 +1063,7 @@ export function SystemDesignCanvas({
           </Tooltip>
         </Card>
 
-        <Card className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-card/95 p-1 backdrop-blur">
+        <Card className="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-card/95 p-1 backdrop-blur-sm">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1122,7 +1121,7 @@ export function SystemDesignCanvas({
         </Card>
 
         {tool === "connector" && (
-          <Card className="absolute left-4 top-[72px] z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 bg-card/95 p-1 backdrop-blur">
+          <Card className="absolute left-4 top-[72px] z-20 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 bg-card/95 p-1 backdrop-blur-sm">
             <ToggleGroup
               type="single"
               value={connectionCardinality}
@@ -1606,7 +1605,7 @@ function TableShape({
         width={node.width}
         height={TABLE_HEADER_HEIGHT}
         rx={8}
-        fill={themeToken("--canvas-node-table-header")}
+        fill="var(--canvas-node-table-header)"
       />
       <path
         d={`M 0 ${TABLE_HEADER_HEIGHT} H ${node.width}`}
@@ -1897,7 +1896,7 @@ function renderConnection({
       {showLabel && (
         <foreignObject x={mid.x - 78} y={mid.y - 17} width={156} height={34}>
           <div className="flex h-full items-center justify-center">
-            <span className="max-w-[150px] truncate rounded border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+            <span className="max-w-[150px] truncate rounded-sm border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground shadow-xs">
               {connection.label}
             </span>
           </div>
@@ -2187,7 +2186,7 @@ function renderCardinalityMenu({
 
   return (
     <Card
-      className="fixed z-40 w-[232px] bg-card/95 p-2 backdrop-blur"
+      className="fixed z-40 w-[232px] bg-card/95 p-2 backdrop-blur-sm"
       style={{
         left: menu.x,
         top: menu.y

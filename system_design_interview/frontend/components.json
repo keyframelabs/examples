@@ -5,9 +5,9 @@
   "tsx": true,
   "iconLibrary": "lucide",
   "tailwind": {
-    "config": "tailwind.config.ts",
+    "config": "",
     "css": "src/index.css",
-    "baseColor": "slate",
+    "baseColor": "stone",
     "cssVariables": true
   },
   "aliases": {

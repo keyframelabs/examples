@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { PersonaView } from "@keyframelabs/elements";
 import {
   AlertCircle,
   GripHorizontal,
@@ -48,10 +49,6 @@ const PANEL_WIDTH = 392;
 const PANEL_HEIGHT = 500;
 const MINIMIZED_WIDTH = 260;
 const MINIMIZED_HEIGHT = 56;
-
-type PersonaElementsModule = typeof import("@keyframelabs/elements");
-
-let personaElementsPromise: Promise<PersonaElementsModule> | null = null;
 
 export function FloatingAvatarWindow({
   canvasText,
@@ -132,12 +129,7 @@ export function FloatingAvatarWindow({
 
     try {
       await cleanupRuntime();
-      const personaElementsModulePromise = loadPersonaElements();
-      const liveSessionPromise = createLiveSession();
-      const [liveSession, { PersonaView }] = await Promise.all([
-        liveSessionPromise,
-        personaElementsModulePromise
-      ]);
+      const liveSession = await createLiveSession();
       const container = containerRef.current;
       if (!container) {
         throw new Error("Avatar container is not ready.");
@@ -446,8 +438,6 @@ export function FloatingAvatarWindow({
               <Button
                 type="button"
                 className="flex-1 font-semibold"
-                onMouseEnter={preloadPersonaElements}
-                onFocus={preloadPersonaElements}
                 onClick={() => {
                   void connect();
                 }}
@@ -502,19 +492,6 @@ export function FloatingAvatarWindow({
       ? { width: MINIMIZED_WIDTH, height: MINIMIZED_HEIGHT }
       : { width: PANEL_WIDTH, height: PANEL_HEIGHT };
   }
-
-}
-
-function loadPersonaElements(): Promise<PersonaElementsModule> {
-  personaElementsPromise ??= import("@keyframelabs/elements").catch((err) => {
-    personaElementsPromise = null;
-    throw err;
-  });
-  return personaElementsPromise;
-}
-
-function preloadPersonaElements(): void {
-  void loadPersonaElements().catch(() => undefined);
 }
 
 function clearContainer(container: HTMLElement) {
