@@ -1,13 +1,11 @@
 # Keyframe Labs System Design Interview Demo
 
-This demo pairs the reusable infinite canvas with a floating Keyframe Labs avatar interviewer powered by ElevenLabs.
+This demo pairs an infinite system design canvas with a floating Keyframe Labs avatar interviewer powered by ElevenLabs.
 
 ## Structure
 
-- `client/` owns the system design interview UI.
-- `ui/` owns shared shadcn primitives, CSS theme tokens, and the Tailwind preset.
+- `frontend/` owns the system design interview UI, including the canvas, avatar, and app-owned shadcn components.
 - `server/` creates Keyframe sessions and ElevenLabs signed URLs without exposing provider secrets to the browser.
-- `infinite-canvas/` remains a standalone, testable canvas package that exports the canvas, serializer, types, and contextual-update adapter.
 
 ## Run
 
@@ -17,9 +15,27 @@ This demo pairs the reusable infinite canvas with a floating Keyframe Labs avata
 4. Install JavaScript dependencies with `pnpm install`.
 5. Start the app with `pnpm dev`.
 
-The client runs on `http://localhost:5174` and the API runs on `http://localhost:8788` by default.
+The frontend runs on `http://localhost:5174` and the API runs on `http://localhost:8788` by default.
 
 Python commands run through `uv run`, which uses the repo `.python-version` file.
+
+## Shadcn components
+
+`frontend/components.json` is the only shadcn configuration. Component source lives in
+`frontend/src/components/ui`, `cn()` lives in `frontend/src/lib/utils.ts`, and global
+theme variables and Tailwind layers live in `frontend/src/index.css`.
+
+Edit `frontend/src/components/ui/*.tsx` to change shared component defaults. Customize
+individual instances with `className`, `variant`, and `size` where the component supports
+them.
+
+Add a component from the repository root with:
+
+```sh
+pnpm --dir frontend dlx shadcn@latest add <component>
+```
+
+Do not overwrite an existing customized component without reviewing the resulting diff.
 
 `PROVIDER_TIMEOUT_SECONDS` controls the timeout for Keyframe session creation and ElevenLabs signed URL requests.
 

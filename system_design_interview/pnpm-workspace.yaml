@@ -1,6 +1,4 @@
 packages:
-  - "client"
-  - "infinite-canvas"
-  - "ui"
+  - "frontend"
 allowBuilds:
   esbuild: true
