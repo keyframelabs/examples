@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
+import type { CanvasSyncStatus } from "@/utils/avatar/canvasContextSync";
 
 type CanvasSyncIndicatorProps = {
   status: CanvasSyncStatus;

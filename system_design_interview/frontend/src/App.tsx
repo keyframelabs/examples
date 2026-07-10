@@ -3,22 +3,19 @@ import { useCallback, useState } from "react";
 import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
 import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
-import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
+import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
+import {
+  INITIAL_CANVAS_SYNC_STATUS,
+  type CanvasSyncStatus
+} from "@/utils/avatar/canvasContextSync";
 import { initialSystemDesignCanvas } from "@/utils/interview/initialCanvas";
 
-const initialCanvasSyncStatus: CanvasSyncStatus = {
-  isReady: false,
-  isSending: false,
-  pendingEdits: 0,
-  lastSentAt: null,
-  lastSentVersion: 0,
-  error: null
-};
-
 export function App() {
-  const [canvasText, setCanvasText] = useState("Canvas v8");
+  const [canvasText, setCanvasText] = useState(
+    () => serializeCanvasToText(initialSystemDesignCanvas).text
+  );
   const [canvasSyncStatus, setCanvasSyncStatus] =
-    useState<CanvasSyncStatus>(initialCanvasSyncStatus);
+    useState<CanvasSyncStatus>(INITIAL_CANVAS_SYNC_STATUS);
 
   const handleCanvasTextChange = useCallback((text: string) => {
     setCanvasText(text);

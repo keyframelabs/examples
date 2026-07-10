@@ -3,14 +3,14 @@ import {
   type CanvasContextBuffer,
   type CanvasContextBufferOptions,
   type CanvasContextBufferStatus
-} from "./canvasContextBuffer";
+} from "@/utils/avatar/canvasContextBuffer";
 
 interface CanvasContextualUpdateOptions {
   version?: number;
 }
 
-export type CanvasContextSyncStatus = {
-  isRunning: boolean;
+export type CanvasSyncStatus = {
+  isReady: boolean;
   isSending: boolean;
   pendingEdits: number;
   lastSentAt: number | null;
@@ -18,19 +18,28 @@ export type CanvasContextSyncStatus = {
   error: string | null;
 };
 
+export const INITIAL_CANVAS_SYNC_STATUS: CanvasSyncStatus = {
+  isReady: false,
+  isSending: false,
+  pendingEdits: 0,
+  lastSentAt: null,
+  lastSentVersion: 0,
+  error: null
+};
+
 export type CanvasContextSyncOptions = {
   sendContextUpdate: (text: string) => void | Promise<void>;
   hashIntervalMs?: number;
   sendIntervalMs?: number;
   now?: () => number;
-  onStatusChange?: (status: CanvasContextSyncStatus) => void;
+  onStatusChange?: (status: CanvasSyncStatus) => void;
 };
 
 export type CanvasContextSync = {
   push(text: string): void;
   start(): void;
   stop(): void;
-  getStatus(): CanvasContextSyncStatus;
+  getStatus(): CanvasSyncStatus;
 };
 
 export function createCanvasContextSync(
@@ -67,9 +76,9 @@ export function createCanvasContextSync(
 function mapStatus(
   status: CanvasContextBufferStatus,
   lastSentVersion: number
-): CanvasContextSyncStatus {
+): CanvasSyncStatus {
   return {
-    isRunning: status.isRunning,
+    isReady: status.isRunning,
     isSending: status.isSending,
     pendingEdits: status.hasPendingUpdate ? 1 : 0,
     lastSentAt: status.lastSentAt,

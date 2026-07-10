@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createCanvasContextSync,
-  type CanvasContextSyncStatus
-} from "./canvasContextSync";
+  type CanvasSyncStatus
+} from "@/utils/avatar/canvasContextSync";
 
 describe("createCanvasContextSync", () => {
   afterEach(() => {
@@ -35,7 +35,7 @@ describe("createCanvasContextSync", () => {
   it("reports buffered pending, sending, sent, and version status", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const statuses: CanvasContextSyncStatus[] = [];
+    const statuses: CanvasSyncStatus[] = [];
     const sendContextUpdate = vi.fn();
     const sync = createCanvasContextSync({
       sendContextUpdate,
@@ -49,7 +49,7 @@ describe("createCanvasContextSync", () => {
     await vi.advanceTimersByTimeAsync(200);
 
     expect(sync.getStatus()).toMatchObject({
-      isRunning: true,
+      isReady: true,
       pendingEdits: 1,
       lastSentVersion: 0,
       error: null

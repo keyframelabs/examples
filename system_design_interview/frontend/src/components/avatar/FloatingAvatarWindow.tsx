@@ -16,10 +16,10 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { createLiveSession } from "@/lib/api";
-import type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 import {
   createCanvasContextSync,
-  type CanvasContextSyncStatus
+  INITIAL_CANVAS_SYNC_STATUS,
+  type CanvasSyncStatus
 } from "@/utils/avatar/canvasContextSync";
 import {
   attachPersonaTranscriptObserver,
@@ -27,8 +27,6 @@ import {
   type PersonaViewRuntime,
   sendPersonaContext
 } from "@/utils/avatar/personaViewRuntime";
-
-export type { CanvasSyncStatus } from "@/types/canvas-sync-status";
 
 type FloatingAvatarWindowProps = {
   canvasText: string;
@@ -65,7 +63,6 @@ export function FloatingAvatarWindow({
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const latestCanvasTextRef = useRef(canvasText);
-  const contextSyncReadyRef = useRef(false);
   const lastLoggedContextVersionRef = useRef(0);
   const lastLoggedContextErrorRef = useRef<string | null>(null);
   const [position, setPosition] = useState<Position>(() => initialPosition(PANEL_WIDTH, PANEL_HEIGHT));
@@ -74,19 +71,17 @@ export function FloatingAvatarWindow({
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
-  const [contextSyncReady, setContextSyncReady] = useState(false);
-  const [lastContextSentAt, setLastContextSentAt] = useState<number | null>(null);
-  const [lastContextVersion, setLastContextVersion] = useState(0);
-  const [contextSending, setContextSending] = useState(false);
-  const [pendingContextEdits, setPendingContextEdits] = useState(0);
-  const [contextSyncError, setContextSyncError] = useState<string | null>(null);
+  const [canvasSyncStatus, setCanvasSyncStatus] = useState<CanvasSyncStatus>(
+    INITIAL_CANVAS_SYNC_STATUS
+  );
   const showConnectionLog = shouldShowConnectionLog();
-  const contextPending = contextSending || pendingContextEdits > 0;
+  const contextPending =
+    canvasSyncStatus.isSending || canvasSyncStatus.pendingEdits > 0;
 
   useEffect(() => {
     latestCanvasTextRef.current = canvasText;
     const runtime = runtimeRef.current;
-    if (!runtime || !contextSyncReadyRef.current) {
+    if (!runtime?.contextSync.getStatus().isReady) {
       return;
     }
 
@@ -94,23 +89,8 @@ export function FloatingAvatarWindow({
   }, [canvasText]);
 
   useEffect(() => {
-    onCanvasSyncStatusChange?.({
-      isReady: contextSyncReady,
-      isSending: contextSending,
-      pendingEdits: pendingContextEdits,
-      lastSentAt: lastContextSentAt,
-      lastSentVersion: lastContextVersion,
-      error: contextSyncError
-    });
-  }, [
-    contextSending,
-    contextSyncError,
-    contextSyncReady,
-    lastContextSentAt,
-    lastContextVersion,
-    onCanvasSyncStatusChange,
-    pendingContextEdits
-  ]);
+    onCanvasSyncStatusChange?.(canvasSyncStatus);
+  }, [canvasSyncStatus, onCanvasSyncStatusChange]);
 
   useEffect(() => {
     return () => {
@@ -146,17 +126,12 @@ export function FloatingAvatarWindow({
     setError(null);
     setEvents([]);
     setIsConnecting(true);
-    setContextSyncError(null);
-    setLastContextSentAt(null);
-    setLastContextVersion(0);
-    setContextSending(false);
-    setPendingContextEdits(0);
+    setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     lastLoggedContextVersionRef.current = 0;
     lastLoggedContextErrorRef.current = null;
 
     try {
       await cleanupRuntime();
-      setContextSyncReadyValue(false);
       const personaElementsModulePromise = loadPersonaElements();
       const liveSessionPromise = createLiveSession();
       const [liveSession, { PersonaView }] = await Promise.all([
@@ -228,7 +203,6 @@ export function FloatingAvatarWindow({
         });
       }
 
-      setContextSyncReadyValue(true);
       contextSync.push(latestCanvasTextRef.current);
       contextSync.start();
       logEvent("Canvas context sync started");
@@ -243,8 +217,7 @@ export function FloatingAvatarWindow({
       }
       setError(formatError(err));
       setIsConnected(false);
-      setContextSending(false);
-      setPendingContextEdits(0);
+      setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     } finally {
       setIsConnecting(false);
     }
@@ -267,7 +240,6 @@ export function FloatingAvatarWindow({
     }
 
     const runtime = runtimeRef.current;
-    setContextSyncReadyValue(false);
     if (!runtime) {
       resetRuntimeState();
       return;
@@ -289,21 +261,13 @@ export function FloatingAvatarWindow({
 
   function resetRuntimeState() {
     setIsConnected(false);
-    setContextSending(false);
-    setPendingContextEdits(0);
-    setContextSyncError(null);
-    setLastContextSentAt(null);
-    setLastContextVersion(0);
+    setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     lastLoggedContextVersionRef.current = 0;
     lastLoggedContextErrorRef.current = null;
   }
 
-  function handleCanvasContextSyncStatus(status: CanvasContextSyncStatus) {
-    setContextSending(status.isSending);
-    setPendingContextEdits(status.pendingEdits);
-    setLastContextSentAt(status.lastSentAt);
-    setLastContextVersion(status.lastSentVersion);
-    setContextSyncError(status.error);
+  function handleCanvasContextSyncStatus(status: CanvasSyncStatus) {
+    setCanvasSyncStatus(status);
 
     if (status.error && status.error !== lastLoggedContextErrorRef.current) {
       lastLoggedContextErrorRef.current = status.error;
@@ -405,7 +369,7 @@ export function FloatingAvatarWindow({
   const subtitle = isConnected
     ? contextPending
       ? "Syncing"
-      : lastContextSentAt
+      : canvasSyncStatus.lastSentAt
         ? "Synced"
         : "Live interview"
     : "System design interviewer";
@@ -539,10 +503,6 @@ export function FloatingAvatarWindow({
       : { width: PANEL_WIDTH, height: PANEL_HEIGHT };
   }
 
-  function setContextSyncReadyValue(nextReady: boolean) {
-    contextSyncReadyRef.current = nextReady;
-    setContextSyncReady(nextReady);
-  }
 }
 
 function loadPersonaElements(): Promise<PersonaElementsModule> {

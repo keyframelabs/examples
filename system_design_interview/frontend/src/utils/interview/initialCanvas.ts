@@ -1,7 +1,10 @@
-import type { CanvasState } from "@/components/canvas/model/types";
+import {
+  CANVAS_SCHEMA_VERSION,
+  type CanvasState
+} from "@/components/canvas/model/types";
 
 export const initialSystemDesignCanvas: CanvasState = {
-  version: 8,
+  version: CANVAS_SCHEMA_VERSION,
   selectedIds: [],
   order: ["candidate", "client", "edge", "api", "worker", "cache", "db", "events", "profiles", "c1", "c2", "c3", "c4", "c5", "c6"],
   elements: {

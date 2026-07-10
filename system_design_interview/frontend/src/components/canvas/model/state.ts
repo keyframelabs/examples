@@ -230,16 +230,6 @@ export function canvasReducer(
   }
 }
 
-export function isNode(element: CanvasElement | undefined): element is CanvasNode {
-  return Boolean(element && element.kind !== "connection");
-}
-
-export function isConnection(
-  element: CanvasElement | undefined
-): element is CanvasConnection {
-  return Boolean(element && element.kind === "connection");
-}
-
 export function parseTableEditorValue(
   value: string,
   existingFields: CanvasField[] = []

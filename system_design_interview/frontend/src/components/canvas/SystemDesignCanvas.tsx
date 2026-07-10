@@ -45,22 +45,22 @@ import {
   TABLE_HEADER_HEIGHT,
   createConnection,
   createNode,
-  isConnection,
-  isNode,
   parseTableEditorValue
 } from "@/components/canvas/model/state";
-import type {
-  CanvasConnectionCardinality,
-  CanvasConnection,
-  CanvasElement,
-  CanvasFieldSide,
-  CanvasField,
-  CanvasNodeAnchor,
-  CanvasNode,
-  CanvasState,
-  CanvasTableNode,
-  CanvasTextMetadata,
-  CanvasTool
+import {
+  isConnection,
+  isNode,
+  type CanvasConnectionCardinality,
+  type CanvasConnection,
+  type CanvasElement,
+  type CanvasFieldSide,
+  type CanvasField,
+  type CanvasNodeAnchor,
+  type CanvasNode,
+  type CanvasState,
+  type CanvasTableNode,
+  type CanvasTextMetadata,
+  type CanvasTool
 } from "@/components/canvas/model/types";
 import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
 

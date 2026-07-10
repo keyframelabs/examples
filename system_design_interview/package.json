@@ -14,8 +14,6 @@
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "concurrently": "^9.2.0"
   }
 }

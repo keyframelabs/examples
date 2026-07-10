@@ -109,7 +109,7 @@ def test_create_session_endpoint_uses_keyframe_and_elevenlabs_provider_flow(
             "dynamic_variables": {
                 "interviewer_name": "Lyra",
                 "interview_type": "system design",
-                "canvas_context_format": "Serialized Canvas v8 architecture text",
+                "canvas_context_format": "Serialized canvas architecture text",
             },
         },
         "conversationId": "conversation_123",

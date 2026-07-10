@@ -1,5 +1,7 @@
 import {
   CANVAS_SCHEMA_VERSION,
+  isConnection,
+  isNode,
   type CanvasConnection,
   type CanvasConnectionCardinality,
   type CanvasElement,
@@ -202,12 +204,4 @@ function slugify(value: string): string {
 
 function cleanText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
-}
-
-function isNode(element: CanvasElement): element is CanvasNode {
-  return element.kind !== "connection";
-}
-
-function isConnection(element: CanvasElement): element is CanvasConnection {
-  return element.kind === "connection";
 }
