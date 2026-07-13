@@ -11,7 +11,7 @@ describe("serializeCanvasToText", () => {
   it("serializes an empty canvas", () => {
     const result = serializeCanvasToText(state([]));
 
-    expect(result.text).toBe("Canvas v8");
+    expect(result.text).toBe("Canvas v12");
     expect(result.metadata).toEqual({
       version: CANVAS_SCHEMA_VERSION,
       nodeCount: 0,
@@ -71,7 +71,7 @@ describe("serializeCanvasToText", () => {
 
     expect(result.text).toBe(
       [
-        "Canvas v8",
+        "Canvas v12",
         "Nodes:",
         "actor customer: Customer",
         "service api_gateway: API Gateway",
@@ -110,7 +110,7 @@ describe("serializeCanvasToText", () => {
           label: "Accounts",
           tableType: "entity",
           fields: [
-            { id: "field-1", text: "id" },
+            { id: "field-1", text: "id", primaryKey: true },
             { id: "field-2", text: "email" },
             { id: "field-3", text: "created_at" }
           ],
@@ -127,7 +127,7 @@ describe("serializeCanvasToText", () => {
           alias: "events",
           fields: [
             { id: "field-4", text: "id" },
-            { id: "field-5", text: "account_id fk" },
+            { id: "field-5", text: "account_id", foreignKey: true },
             { id: "field-6", text: "created_at" }
           ],
           databaseId: "database-1"
@@ -137,11 +137,11 @@ describe("serializeCanvasToText", () => {
 
     expect(result.text).toBe(
       [
-        "Canvas v8",
+        "Canvas v12",
         "Nodes:",
         "database core: Core DB",
         "Tables:",
-        "core.accounts<entity>(id, email, created_at)",
+        "core.accounts<entity>(id pk, email, created_at)",
         "core.events(id, account_id fk, created_at)"
       ].join("\n")
     );
@@ -216,7 +216,7 @@ describe("serializeCanvasToText", () => {
 
     expect(result.text).toBe(
       [
-        "Canvas v8",
+        "Canvas v12",
         "Nodes:",
         "actor client: Client",
         "service api: API",
@@ -266,7 +266,7 @@ describe("serializeCanvasToText", () => {
           height: 150,
           label: "users",
           fields: [
-            { id: "field-1", text: "id pk" },
+            { id: "field-1", text: "id", primaryKey: true },
             { id: "field-2", text: "email" }
           ],
           databaseId: "database-1"
@@ -283,7 +283,7 @@ describe("serializeCanvasToText", () => {
 
     expect(result.text).toBe(
       [
-        "Canvas v8",
+        "Canvas v12",
         "Nodes:",
         "service auth: Auth Service",
         "database db: Postgres",

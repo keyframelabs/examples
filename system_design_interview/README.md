@@ -7,6 +7,9 @@ This demo pairs an infinite system design canvas with a floating Keyframe Labs a
 - `frontend/` owns the system design interview UI, including the canvas, avatar, and app-owned shadcn components.
 - `server/` creates Keyframe sessions and ElevenLabs signed URLs without exposing provider secrets to the browser.
 
+The canvas uses the free, MIT-licensed `@xyflow/react` core package. It does not
+depend on React Flow Pro packages or paid examples.
+
 ## Run
 
 1. Copy `.env.example` to `.env` and fill in the provider keys.

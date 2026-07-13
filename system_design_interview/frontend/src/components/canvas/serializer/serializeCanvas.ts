@@ -50,7 +50,7 @@ export function serializeCanvasToText(state: CanvasState): {
       const tableType = cleanText(table.tableType ?? "");
       const typeSuffix = tableType ? `<${tableType}>` : "";
       const fields = table.fields
-        .map((field) => cleanText(field.text))
+        .map(serializeField)
         .filter(Boolean);
       lines.push(`${prefix}${tableAlias}${typeSuffix}(${fields.join(", ")})`);
     }
@@ -177,6 +177,13 @@ function fieldAlias(field: CanvasField): string {
   const text = cleanText(field.text);
   const firstToken = text.split(/[\s:=|]+/)[0] ?? "";
   return slugify(firstToken || text || field.id) || slugify(field.id) || "field";
+}
+
+function serializeField(field: CanvasField): string {
+  const tokens = [cleanText(field.text)];
+  if (field.primaryKey) tokens.push("pk");
+  if (field.foreignKey) tokens.push("fk");
+  return tokens.filter(Boolean).join(" ");
 }
 
 function cardinalityToken(cardinality: CanvasConnectionCardinality): string {

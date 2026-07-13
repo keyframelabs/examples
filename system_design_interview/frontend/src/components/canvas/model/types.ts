@@ -1,4 +1,4 @@
-export const CANVAS_SCHEMA_VERSION = 8;
+export const CANVAS_SCHEMA_VERSION = 12;
 
 export type CanvasElementKind =
   | "actor"
@@ -14,6 +14,8 @@ export type ShapeNodeKind = Exclude<NodeKind, "table" | "text">;
 export interface CanvasField {
   id: string;
   text: string;
+  primaryKey?: boolean;
+  foreignKey?: boolean;
 }
 
 export type CanvasConnectionCardinality =
