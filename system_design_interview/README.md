@@ -41,26 +41,61 @@ Do not overwrite an existing customized component without reviewing the resultin
 
 ## ElevenLabs Agent Setup
 
-Configure the ElevenLabs agent in the dashboard or a one-time admin script before starting the demo. The API does not update persistent ElevenLabs agent settings when a user starts an interview.
+Each interview packet uses its own preconfigured ElevenLabs agent. Map packet IDs to agent IDs in `.env`:
 
-Recommended first message:
-
-```text
-Hi, I'm Lyra. Let's run a system design interview. What product or capability should we design today?
+```dotenv
+ELEVENLABS_AGENT_IDS={"tinyurl-system-design":"agent_..."}
 ```
 
-Recommended system prompt:
+This mapping connects an interview packet ID to the dedicated ElevenLabs agent that stores that problem's prompt. The
+backend uses it both to synchronize the correct agent during startup and to select that agent when an interview begins.
+Keeping the mapping in `.env` allows development, staging, and production to use different agent IDs without changing
+application code.
 
-```text
-You are Lyra, a senior system design interviewer shown through a Keyframe Labs live avatar.
-Keyframe Labs is only the video avatar provider. You are interviewing the human candidate.
-Run a realistic system design interview: clarify requirements, guide scope, discuss APIs, data model, architecture, scaling, reliability, observability, tradeoffs, and bottlenecks.
-The candidate is drawing on an infinite canvas. You will receive contextual_update events containing the latest serialized canvas state.
-Treat the newest canvas contextual update as the current architecture diagram and use it as background context in the next natural turn.
-Do not immediately respond just because a contextual update arrives. Wait for the conversation turn.
-When useful, refer to concrete services, databases, tables, labels, and connections from the canvas.
-Ask one question at a time. Keep turns concise and interview-like.
-If the design is underspecified, ask about requirements or constraints before proposing solutions.
-If the candidate adds or changes canvas elements, acknowledge the design direction and ask a deeper tradeoff or failure-mode question.
-When the candidate is done, wrap up feedback naturally and let the application call controls handle disconnection.
+For multiple problems, add one mapping entry per packet:
+
+```dotenv
+ELEVENLABS_AGENT_IDS={"tinyurl-system-design":"agent_tinyurl","chat-system-design":"agent_chat"}
 ```
+
+`ELEVENLABS_AGENT_ID` remains an optional backwards-compatible fallback for the default TinyURL packet.
+
+Backend startup synchronizes every registered packet's prompt, first message, and turn settings before accepting
+requests. Changing a packet and restarting the backend therefore updates its persistent ElevenLabs agent. Session
+creation itself only requests provider credentials and never updates agent configuration.
+Startup synchronization is always enabled so the backend cannot serve an interview with stale agent configuration.
+
+The standalone sync command remains available for deployments where you want to update agents without restarting the
+backend:
+
+```sh
+uv run python -m server.app.sync_elevenlabs_agents
+```
+
+Pass one or more packet IDs to sync only those packets:
+
+```sh
+uv run python -m server.app.sync_elevenlabs_agents tinyurl-system-design
+```
+
+The shared hierarchical prompt renderer and problem definitions live in
+`server/app/interview_packets.py`. Each packet includes `turn_timeout_seconds` and `turn_eagerness`; the sync command
+and automatic startup sync write them to `conversation_config.turn.turn_timeout` and
+`conversation_config.turn.turn_eagerness`. These are
+ElevenLabs agent settings, not tool calls, so they do not require KFL SDK support.
+
+To add another problem:
+
+1. Define its `SystemDesignProblem` and `InterviewPacket` and register the packet in `INTERVIEW_PACKETS`.
+2. Create a dedicated ElevenLabs agent for it.
+3. Add the packet-to-agent mapping to `ELEVENLABS_AGENT_IDS`.
+4. Restart the backend, or run the standalone sync command.
+
+The application handles call disconnection. The prompt intentionally does not reference ElevenLabs `end_call` because
+that system tool is not currently exposed by the KFL SDK integration.
+
+The installed KFL Elements integration also does not yet forward ElevenLabs `conversation_initiation_client_data`.
+When that support is available, candidate-visible details can move to per-conversation dynamic variables. Keep private
+solution references on the dedicated agent so they are not exposed in browser traffic. If the packet catalog grows large
+enough that dedicated agents become impractical, use a server-side ElevenLabs relay or custom LLM path for private
+per-session context.

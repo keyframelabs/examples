@@ -9,12 +9,8 @@ export type KeyframeSessionDetails = SessionDetails;
 
 export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   type: "elevenlabs";
-  agent_id?: string;
-  signed_url?: string;
-  dynamic_variables?: Record<string, string>;
-  dynamicVariables?: Record<string, string>;
-  overrides?: Record<string, unknown>;
-  conversation_config_override?: Record<string, unknown>;
+  agent_id: string;
+  signed_url: string;
 };
 
 export type LiveSessionResponse = {
@@ -23,11 +19,11 @@ export type LiveSessionResponse = {
   conversationId?: string;
 };
 
-export async function createLiveSession(): Promise<LiveSessionResponse> {
+export async function createLiveSession(packetId?: string): Promise<LiveSessionResponse> {
   const response = await fetch(`${API_BASE_URL}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({})
+    body: JSON.stringify(packetId ? { packetId } : {})
   });
 
   const payload = await parseResponse(response);
@@ -59,10 +55,8 @@ function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {
     && typeof value.sessionDetails.participant_token === "string"
     && typeof value.sessionDetails.agent_identity === "string"
     && value.voiceAgentDetails.type === "elevenlabs"
-    && (
-      typeof value.voiceAgentDetails.signed_url === "string"
-      || typeof value.voiceAgentDetails.agent_id === "string"
-    );
+    && typeof value.voiceAgentDetails.signed_url === "string"
+    && typeof value.voiceAgentDetails.agent_id === "string";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
