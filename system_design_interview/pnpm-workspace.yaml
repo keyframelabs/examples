@@ -1,5 +1,4 @@
 packages:
-  - "client"
-  - "infinite-canvas"
+  - "frontend"
 allowBuilds:
   esbuild: true

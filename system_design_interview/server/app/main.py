@@ -166,7 +166,7 @@ async def create_session() -> LiveSessionResponse:
             dynamic_variables={
                 "interviewer_name": "Lyra",
                 "interview_type": "system design",
-                "canvas_context_format": "Serialized Canvas v8 architecture text",
+                "canvas_context_format": "Serialized canvas architecture text",
             },
         ),
         conversation_id=signed_url.conversation_id,

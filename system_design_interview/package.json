@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "dev": "concurrently -k -n server,client -c cyan,green \"uv run uvicorn app.main:app --app-dir server --host localhost --port ${PORT:-8788}\" \"VITE_API_BASE_URL=http://localhost:${PORT:-8788} pnpm --filter @kfl-system-design/client dev\"",
-    "build": "pnpm typecheck && pnpm --filter @kfl-system-design/client build",
+    "dev": "concurrently -k -n server,frontend -c cyan,green \"uv run uvicorn app.main:app --app-dir server --host localhost --port ${PORT:-8788}\" \"VITE_API_BASE_URL=http://localhost:${PORT:-8788} pnpm --filter @kfl-system-design/frontend dev\"",
+    "build": "pnpm typecheck && pnpm --filter @kfl-system-design/frontend build",
     "test": "pnpm -r --if-present test && uv run pytest",
     "server:test": "uv run pytest",
     "server:lint": "uv run ruff check server",
@@ -14,8 +14,6 @@
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "concurrently": "^9.2.0"
   }
 }
