@@ -5,6 +5,7 @@ import {
   canvasReducer,
   createConnection,
   createEmptyCanvasState,
+  createField,
   createNode,
   parseTableEditorValue,
   tableHeightForFields
@@ -32,6 +33,9 @@ describe("canvas state model", () => {
       y: 20,
       label: "API Gateway"
     });
+    expect(canvasReducer(state, { type: "select", ids: ["api"] })).toBe(
+      state
+    );
   });
 
   it("moves selected nodes without moving connections", () => {
@@ -56,8 +60,78 @@ describe("canvas state model", () => {
       dy: -8
     });
 
-    expect(moved.elements.api).toMatchObject({ x: 12, y: -8 });
+    expect(moved.elements.api).toMatchObject({
+      x: (connected.elements.api as typeof api).x + 12,
+      y: (connected.elements.api as typeof api).y - 8
+    });
     expect(moved.elements.c1).toMatchObject({ fromId: "api", toId: "db" });
+  });
+
+  it("applies node and edge selection changes atomically in canvas order", () => {
+    const api = createNode("service", 0, 0, { id: "api" });
+    const db = createNode("database", 240, 0, { id: "db" });
+    const connection = { ...createConnection("api", "db"), id: "c1" };
+    const withNodes = [api, db].reduce(
+      (next, node) =>
+        canvasReducer(next, { type: "add-node", node, select: false }),
+      createEmptyCanvasState()
+    );
+    const state = canvasReducer(
+      canvasReducer(withNodes, {
+        type: "add-connection",
+        connection,
+        select: false
+      }),
+      { type: "select", ids: ["db"] }
+    );
+
+    const selected = canvasReducer(state, {
+      type: "change-selection",
+      changes: [
+        { id: "db", selected: false },
+        { id: "c1", selected: true },
+        { id: "api", selected: true },
+        { id: "missing", selected: true }
+      ]
+    });
+
+    expect(selected.selectedIds).toEqual(["api", "c1"]);
+    expect(
+      canvasReducer(selected, {
+        type: "change-selection",
+        changes: [
+          { id: "api", selected: true },
+          { id: "c1", selected: true }
+        ]
+      })
+    ).toBe(selected);
+  });
+
+  it("updates multiple node geometries atomically", () => {
+    const api = createNode("service", 0, 0, { id: "api" });
+    const db = createNode("database", 240, 0, { id: "db" });
+    const state = [api, db].reduce(
+      (next, node) =>
+        canvasReducer(next, { type: "add-node", node, select: false }),
+      createEmptyCanvasState()
+    );
+
+    const moved = canvasReducer(state, {
+      type: "update-node-geometries",
+      geometries: [
+        { id: "api", x: 20, y: 30 },
+        { id: "db", x: 280, y: 30, width: 220, height: 140 }
+      ]
+    });
+
+    expect(moved.elements.api).toMatchObject({ x: 20, y: 30 });
+    expect(moved.elements.db).toMatchObject({
+      x: 280,
+      y: 30,
+      width: 220,
+      height: 140
+    });
+    expect(state.elements.api).toMatchObject({ x: 0, y: 0 });
   });
 
   it("deletes attached connections when a node is deleted", () => {
@@ -130,8 +204,78 @@ describe("canvas state model", () => {
     expect(parsed).toEqual({
       label: "users",
       fields: [
-        { id: "stable_id", text: "id pk" },
-        { id: "stable_email", text: "email" }
+        {
+          id: "stable_id",
+          text: "id pk",
+          primaryKey: false,
+          foreignKey: false
+        },
+        {
+          id: "stable_email",
+          text: "email",
+          primaryKey: false,
+          foreignKey: false
+        }
+      ]
+    });
+  });
+
+  it("creates new objects and rows without generic stored names", () => {
+    for (const kind of [
+      "actor",
+      "service",
+      "database",
+      "table",
+      "text"
+    ] as const) {
+      const node = createNode(kind, 0, 0);
+      expect(node.label).toBe("");
+      if (node.kind === "table") {
+        expect(node.fields).toHaveLength(1);
+        expect(node.fields[0]).toMatchObject({
+          text: "",
+          primaryKey: false,
+          foreignKey: false
+        });
+      }
+    }
+    const firstField = createField();
+    const secondField = createField();
+    expect(firstField).toMatchObject({
+      text: "",
+      primaryKey: false,
+      foreignKey: false
+    });
+    expect(firstField.id).not.toBe("field_1");
+    expect(secondField.id).not.toBe(firstField.id);
+  });
+
+  it("persists independent PK and FK state on a table row", () => {
+    const table = createNode("table", 0, 0, {
+      id: "table",
+      fields: [
+        createField({
+          id: "row",
+          text: "account_id",
+          primaryKey: true,
+          foreignKey: true
+        })
+      ]
+    });
+    const state = canvasReducer(createEmptyCanvasState(), {
+      type: "add-node",
+      node: table,
+      select: false
+    });
+
+    expect(state.elements.table).toMatchObject({
+      fields: [
+        {
+          id: "row",
+          text: "account_id",
+          primaryKey: true,
+          foreignKey: true
+        }
       ]
     });
   });
