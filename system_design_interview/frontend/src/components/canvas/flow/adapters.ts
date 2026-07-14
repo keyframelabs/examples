@@ -40,7 +40,6 @@ export type FlowNodeGeometry = {
 export type SystemNodeData = {
   canvasNode: CanvasNode;
   tool: CanvasTool;
-  readonly: boolean;
   autoFocus: boolean;
   onResizeStart: () => void;
   onResizeEnd: (geometry: FlowNodeGeometry) => void;
@@ -64,7 +63,6 @@ export type SystemFlowNode = Node<SystemNodeData, "system">;
 export type SystemEdgeData = {
   connection: CanvasConnection;
   isTableRelationship: boolean;
-  readonly: boolean;
   onEditStart: () => void;
   onEditEnd: () => void;
   onEditComplete: () => void;
@@ -75,7 +73,6 @@ export type SystemFlowEdge = Edge<SystemEdgeData, "system">;
 
 export interface FlowAdapterOptions {
   tool: CanvasTool;
-  readonly: boolean;
   autoFocusNodeId: string | null;
   onResizeStart: () => void;
   onResizeEnd: (geometry: FlowNodeGeometry) => void;
@@ -139,15 +136,14 @@ export function canvasNodeToFlowNode(
     measured: { width: node.width, height: node.height },
     style: { width: node.width, height: node.height },
     selected,
-    draggable: !options.readonly && options.tool === "select",
-    selectable: !options.readonly,
-    connectable: !options.readonly,
-    deletable: !options.readonly,
+    draggable: options.tool === "select",
+    selectable: true,
+    connectable: true,
+    deletable: true,
     ariaLabel: `${node.kind} node: ${node.label}`,
     data: {
       canvasNode: node,
       tool: options.tool,
-      readonly: options.readonly,
       autoFocus: options.autoFocusNodeId === node.id,
       onResizeStart: options.onResizeStart,
       onResizeEnd: options.onResizeEnd,
@@ -199,9 +195,9 @@ export function canvasConnectionToFlowEdge(
         facingFieldSide(to, centerOf(from))
     }),
     selected,
-    selectable: !options.readonly,
-    deletable: !options.readonly,
-    reconnectable: !options.readonly,
+    selectable: true,
+    deletable: true,
+    reconnectable: true,
     interactionWidth: 18,
     markerEnd: tableRelationship
       ? undefined
@@ -217,7 +213,6 @@ export function canvasConnectionToFlowEdge(
     data: {
       connection,
       isTableRelationship: tableRelationship,
-      readonly: options.readonly,
       onEditStart: options.onEditStart,
       onEditEnd: options.onEditEnd,
       onEditComplete: options.onEditComplete,

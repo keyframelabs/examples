@@ -90,7 +90,6 @@ interface CardinalityMenuState {
 
 export interface SystemDesignCanvasProps {
   initialState?: CanvasState;
-  readonly?: boolean;
   className?: string;
   onCanvasChange?: (state: CanvasState) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
@@ -128,7 +127,6 @@ const cardinalityItems: Array<{
 
 export function SystemDesignCanvas({
   initialState,
-  readonly = false,
   className = "",
   onCanvasChange,
   onCanvasTextChange
@@ -230,7 +228,7 @@ export function SystemDesignCanvas({
 
   const queueSelectionChanges = useCallback(
     (changes: CanvasSelectionChange[]) => {
-      if (readonly || changes.length === 0) return;
+      if (changes.length === 0) return;
 
       for (const change of changes) {
         pendingSelectionChangesRef.current.set(change.id, change.selected);
@@ -250,7 +248,7 @@ export function SystemDesignCanvas({
         }
       });
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleNodesChange: OnNodesChange<SystemFlowNode> = useCallback(
@@ -299,19 +297,18 @@ export function SystemDesignCanvas({
       nodes: SystemFlowNode[];
       edges: SystemFlowEdge[];
     }) => {
-      if (readonly) return;
       const ids = [
         ...nodes.map((node) => node.id),
         ...edges.map((edge) => edge.id)
       ];
       if (ids.length > 0) apply({ type: "delete-elements", ids });
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleConnect: OnConnect = useCallback(
     (connection) => {
-      if (readonly || isSameFlowEndpoint(connection)) return;
+      if (isSameFlowEndpoint(connection)) return;
       const current = stateRef.current;
       const from = current.elements[connection.source];
       const to = current.elements[connection.target];
@@ -338,12 +335,12 @@ export function SystemDesignCanvas({
       });
       setTool("select");
     },
-    [apply, connectionCardinality, readonly]
+    [apply, connectionCardinality]
   );
 
   const handleReconnect: OnReconnect<SystemFlowEdge> = useCallback(
     (flowEdge, connection) => {
-      if (readonly || isSameFlowEndpoint(connection)) return;
+      if (isSameFlowEndpoint(connection)) return;
       const current = stateRef.current;
       const canvasConnection = current.elements[flowEdge.id];
       const from = current.elements[connection.source];
@@ -373,19 +370,17 @@ export function SystemDesignCanvas({
       });
       setTool("select");
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleEditStart = useCallback(() => {
-    if (!readonly) beginInteraction();
-  }, [beginInteraction, readonly]);
+    beginInteraction();
+  }, [beginInteraction]);
 
   const handleEditEnd = useCallback(() => {
-    if (!readonly) {
-      applyEphemeral({ type: "settle-collisions" });
-      finishInteraction();
-    }
-  }, [applyEphemeral, finishInteraction, readonly]);
+    applyEphemeral({ type: "settle-collisions" });
+    finishInteraction();
+  }, [applyEphemeral, finishInteraction]);
 
   const handleEditComplete = useCallback(() => {
     setAutoFocusNodeId(null);
@@ -395,16 +390,13 @@ export function SystemDesignCanvas({
 
   const handleLabelChange = useCallback(
     (id: string, label: string) => {
-      if (!readonly) {
-        applyEphemeral({ type: "update-element", id, patch: { label } });
-      }
+      applyEphemeral({ type: "update-element", id, patch: { label } });
     },
-    [applyEphemeral, readonly]
+    [applyEphemeral]
   );
 
   const handleFieldTextChange = useCallback(
     (tableId: string, fieldId: string, text: string) => {
-      if (readonly) return;
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
       applyEphemeral({
@@ -417,7 +409,7 @@ export function SystemDesignCanvas({
         }
       });
     },
-    [applyEphemeral, readonly]
+    [applyEphemeral]
   );
 
   const handleToggleFieldKey = useCallback(
@@ -426,7 +418,6 @@ export function SystemDesignCanvas({
       fieldId: string,
       key: "primaryKey" | "foreignKey"
     ) => {
-      if (readonly) return;
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
       apply({
@@ -441,12 +432,11 @@ export function SystemDesignCanvas({
         }
       });
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleAddField = useCallback(
     (tableId: string) => {
-      if (readonly) return;
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
       apply({
@@ -455,12 +445,11 @@ export function SystemDesignCanvas({
         patch: { fields: [...table.fields, createField()] }
       });
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleRemoveField = useCallback(
     (tableId: string, fieldId: string) => {
-      if (readonly) return;
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
       apply({
@@ -469,7 +458,7 @@ export function SystemDesignCanvas({
         fieldId
       });
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handleAutoFocusHandled = useCallback((id: string) => {
@@ -478,7 +467,6 @@ export function SystemDesignCanvas({
 
   const handleEdgeDoubleClick = useCallback(
     (event: ReactMouseEvent, edge: SystemFlowEdge) => {
-      if (readonly) return;
       event.preventDefault();
       const connection = stateRef.current.elements[edge.id];
       if (!isConnection(connection)) return;
@@ -495,13 +483,12 @@ export function SystemDesignCanvas({
         return;
       }
     },
-    [apply, readonly]
+    [apply]
   );
 
   const handlePaneClick = useCallback(
     (event: ReactMouseEvent) => {
       setCardinalityMenu(null);
-      if (readonly) return;
 
       if (tool === "select" || tool === "connector") {
         if (stateRef.current.selectedIds.length > 0) {
@@ -521,18 +508,16 @@ export function SystemDesignCanvas({
       setAutoFocusNodeId(node.id);
       setTool("select");
     },
-    [apply, readonly, tool]
+    [apply, tool]
   );
 
   const isValidConnection = useCallback(
-    (connection: Connection | SystemFlowEdge) => {
-      if (readonly) return false;
-      return !(
+    (connection: Connection | SystemFlowEdge) =>
+      !(
         connection.source === connection.target &&
         (connection.sourceHandle ?? null) === (connection.targetHandle ?? null)
-      );
-    },
-    [readonly]
+      ),
+    []
   );
 
   useEffect(() => {
@@ -577,7 +562,6 @@ export function SystemDesignCanvas({
     () =>
       canvasStateToFlowElements(state, {
         tool,
-        readonly,
         autoFocusNodeId,
         onResizeStart: beginInteraction,
         onResizeEnd: handleResizeEnd,
@@ -604,7 +588,6 @@ export function SystemDesignCanvas({
       handleRemoveField,
       handleResizeEnd,
       handleToggleFieldKey,
-      readonly,
       state,
       tool
     ]
@@ -620,7 +603,6 @@ export function SystemDesignCanvas({
     >
       <CanvasToolbar
         tool={tool}
-        readonly={readonly}
         canUndo={canUndo}
         canRedo={canRedo}
         connectionCardinality={connectionCardinality}
@@ -654,19 +636,18 @@ export function SystemDesignCanvas({
         connectionMode={ConnectionMode.Loose}
         connectionLineComponent={SystemDesignConnectionLine}
         connectionLineStyle={{ stroke: "var(--primary)" }}
-        nodesDraggable={!readonly && tool === "select"}
-        nodesConnectable={!readonly}
-        edgesReconnectable={!readonly &&
-          (tool === "select" || tool === "connector")}
-        elementsSelectable={!readonly}
-        panOnDrag={readonly || tool === "select"}
+        nodesDraggable={tool === "select"}
+        nodesConnectable
+        edgesReconnectable={tool === "select" || tool === "connector"}
+        elementsSelectable
+        panOnDrag={tool === "select"}
         panOnScroll
         zoomOnScroll={false}
         zoomOnPinch
         zoomActivationKeyCode={["Meta", "Control"]}
         zoomOnDoubleClick={false}
         connectOnClick
-        deleteKeyCode={readonly ? null : ["Backspace", "Delete"]}
+        deleteKeyCode={["Backspace", "Delete"]}
         multiSelectionKeyCode={["Meta", "Control"]}
         selectionKeyCode="Shift"
         attributionPosition="bottom-right"
@@ -689,7 +670,6 @@ export function SystemDesignCanvas({
           menu={cardinalityMenu}
           connection={state.elements[cardinalityMenu.connectionId]}
           onSelect={(cardinality) => {
-            if (readonly) return;
             apply({
               type: "update-element",
               id: cardinalityMenu.connectionId,
@@ -706,7 +686,6 @@ export function SystemDesignCanvas({
 
 function CanvasToolbar({
   tool,
-  readonly,
   canUndo,
   canRedo,
   connectionCardinality,
@@ -716,7 +695,6 @@ function CanvasToolbar({
   onRedo
 }: {
   tool: CanvasTool;
-  readonly: boolean;
   canUndo: boolean;
   canRedo: boolean;
   connectionCardinality: CanvasConnectionCardinality;
@@ -744,7 +722,6 @@ function CanvasToolbar({
                     <ToggleGroupItem
                       value={item.id}
                       aria-label={item.label}
-                      disabled={readonly}
                       size="icon"
                     >
                       <Icon size={18} />
@@ -759,13 +736,13 @@ function CanvasToolbar({
         <Separator orientation="vertical" className="mx-1 h-7" />
         <ToolbarButton
           label="Undo"
-          disabled={!canUndo || readonly}
+          disabled={!canUndo}
           onClick={onUndo}
           icon={<Undo2 size={18} />}
         />
         <ToolbarButton
           label="Redo"
-          disabled={!canRedo || readonly}
+          disabled={!canRedo}
           onClick={onRedo}
           icon={<Redo2 size={18} />}
         />
@@ -791,7 +768,6 @@ function CanvasToolbar({
                     <ToggleGroupItem
                       value={item.id}
                       aria-label={item.label}
-                      disabled={readonly}
                       size="sm"
                       className="min-w-10 tabular-nums"
                     >

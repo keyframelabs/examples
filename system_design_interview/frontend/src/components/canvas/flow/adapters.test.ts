@@ -158,7 +158,6 @@ function adapterOptions(
 ): FlowAdapterOptions {
   return {
     tool: "select",
-    readonly: false,
     autoFocusNodeId: null,
     onResizeStart: vi.fn(),
     onResizeEnd: vi.fn(),

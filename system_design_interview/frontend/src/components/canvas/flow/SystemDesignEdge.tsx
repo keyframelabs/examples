@@ -126,7 +126,6 @@ function SystemDesignEdgeComponent({
               }}
               value={data.connection.label}
               placeholder="Flow label"
-              readOnly={data.readonly}
               onChange={(event) =>
                 data.onLabelChange(
                   data.connection.id,
@@ -317,7 +316,6 @@ function areEdgePropsEqual(
     previous.markerEnd === next.markerEnd &&
     previous.data?.connection === next.data?.connection &&
     previous.data?.isTableRelationship === next.data?.isTableRelationship &&
-    previous.data?.readonly === next.data?.readonly &&
     previous.data?.onEditStart === next.data?.onEditStart &&
     previous.data?.onEditEnd === next.data?.onEditEnd &&
     previous.data?.onEditComplete === next.data?.onEditComplete &&

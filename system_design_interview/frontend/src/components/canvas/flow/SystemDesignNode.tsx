@@ -91,8 +91,8 @@ function SystemDesignNodeComponent({
   isConnectable
 }: NodeProps<SystemFlowNode>) {
   const updateNodeInternals = useUpdateNodeInternals();
-  const { canvasNode, tool, readonly } = data;
-  const isConnectorMode = tool === "connector" && !readonly;
+  const { canvasNode, tool } = data;
+  const isConnectorMode = tool === "connector";
   const handleVersion =
     canvasNode.kind === "table"
       ? canvasNode.fields.map((field) => field.id).join("|")
@@ -113,7 +113,7 @@ function SystemDesignNodeComponent({
       style={{ color: nodeColors[canvasNode.kind].foreground }}
     >
       <NodeResizer
-        isVisible={selected && !readonly}
+        isVisible={selected}
         minWidth={canvasNode.kind === "table" ? 240 : 80}
         minHeight={
           canvasNode.kind === "table"
@@ -148,7 +148,7 @@ function SystemDesignNodeComponent({
             style={anchorStyle(anchor)}
             visible={isConnectorMode}
             canStart={isConnectorMode}
-            canEnd={isConnectable && !readonly}
+            canEnd={isConnectable}
           />
         )
       )}
@@ -169,7 +169,7 @@ function SystemDesignNodeComponent({
                 }}
                 visible={isConnectorMode}
                 canStart={isConnectorMode}
-                canEnd={isConnectable && !readonly}
+                canEnd={isConnectable}
               />
             ))
           )
@@ -198,7 +198,6 @@ function ShapeNode({
         placeholder="Name"
         value={node.label}
         autoFocus={data.autoFocus}
-        readonly={data.readonly}
         onAutoFocus={() => data.onAutoFocusHandled(node.id)}
         onFocus={data.onEditStart}
         onBlur={data.onEditEnd}
@@ -247,7 +246,6 @@ function DatabaseNode({
         placeholder="Database name"
         value={node.label}
         autoFocus={data.autoFocus}
-        readonly={data.readonly}
         onAutoFocus={() => data.onAutoFocusHandled(node.id)}
         onFocus={data.onEditStart}
         onBlur={data.onEditEnd}
@@ -286,7 +284,6 @@ function TableNode({
           placeholder="Table title"
           value={node.label}
           autoFocus={data.autoFocus}
-          readonly={data.readonly}
           onAutoFocus={() => data.onAutoFocusHandled(node.id)}
           onFocus={data.onEditStart}
           onBlur={data.onEditEnd}
@@ -304,20 +301,18 @@ function TableNode({
             data={data}
           />
         ))}
-        {!data.readonly ? (
-          <button
-            type="button"
-            aria-label={`Add row to ${node.label || "table"}`}
-            className="nodrag nopan mt-1 h-6 rounded px-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onPointerDown={stopPointerPropagation}
-            onClick={(event) => {
-              event.stopPropagation();
-              data.onAddField(node.id);
-            }}
-          >
-            + Row
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-label={`Add row to ${node.label || "table"}`}
+          className="nodrag nopan mt-1 h-6 rounded px-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onPointerDown={stopPointerPropagation}
+          onClick={(event) => {
+            event.stopPropagation();
+            data.onAddField(node.id);
+          }}
+        >
+          + Row
+        </button>
       </div>
     </div>
   );
@@ -342,7 +337,6 @@ function TableFieldRow({
         ariaLabel="column name"
         placeholder="Column name"
         value={field.text}
-        readonly={data.readonly}
         onFocus={data.onEditStart}
         onBlur={data.onEditEnd}
         onEditComplete={data.onEditComplete}
@@ -353,31 +347,27 @@ function TableFieldRow({
         label="PK"
         fieldLabel={field.text || "blank row"}
         active={Boolean(field.primaryKey)}
-        readonly={data.readonly}
         onToggle={() => data.onToggleFieldKey(tableId, field.id, "primaryKey")}
       />
       <KeyToggle
         label="FK"
         fieldLabel={field.text || "blank row"}
         active={Boolean(field.foreignKey)}
-        readonly={data.readonly}
         onToggle={() => data.onToggleFieldKey(tableId, field.id, "foreignKey")}
       />
-      {!data.readonly ? (
-        <button
-          type="button"
-          aria-label={`Remove ${field.text || "blank"} row`}
-          title="Remove row"
-          className="nodrag nopan grid h-5 w-5 shrink-0 place-items-center rounded text-[13px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          onPointerDown={stopPointerPropagation}
-          onClick={(event) => {
-            event.stopPropagation();
-            data.onRemoveField(tableId, field.id);
-          }}
-        >
-          ×
-        </button>
-      ) : null}
+      <button
+        type="button"
+        aria-label={`Remove ${field.text || "blank"} row`}
+        title="Remove row"
+        className="nodrag nopan grid h-5 w-5 shrink-0 place-items-center rounded text-[13px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        onPointerDown={stopPointerPropagation}
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onRemoveField(tableId, field.id);
+        }}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -386,13 +376,11 @@ function KeyToggle({
   label,
   fieldLabel,
   active,
-  readonly,
   onToggle
 }: {
   label: "PK" | "FK";
   fieldLabel: string;
   active: boolean;
-  readonly: boolean;
   onToggle: () => void;
 }) {
   return (
@@ -400,7 +388,6 @@ function KeyToggle({
       type="button"
       aria-label={`${label} for ${fieldLabel} ${active ? "enabled" : "disabled"}`}
       aria-pressed={active}
-      disabled={readonly}
       className={cn(
         "nodrag nopan h-5 min-w-6 shrink-0 rounded border px-1 text-[9px] font-bold",
         active
@@ -444,7 +431,6 @@ function TextNode({
         placeholder="Write a note"
         value={node.label}
         autoFocus={data.autoFocus}
-        readOnly={data.readonly}
         spellCheck
         className="nopan nowheel pointer-events-none h-full w-full resize-none overflow-auto rounded-md border-0 bg-transparent p-0 text-left font-medium outline-none placeholder:text-muted-foreground/60 focus:ring-1 focus:ring-primary"
         onKeyDown={(event) =>
@@ -470,7 +456,6 @@ function InlineInput({
   placeholder,
   value,
   autoFocus = false,
-  readonly,
   onAutoFocus,
   onFocus,
   onBlur,
@@ -483,7 +468,6 @@ function InlineInput({
   placeholder: string;
   value: string;
   autoFocus?: boolean;
-  readonly: boolean;
   onAutoFocus?: () => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -506,7 +490,6 @@ function InlineInput({
         placeholder={placeholder}
         value={value}
         autoFocus={autoFocus}
-        readOnly={readonly}
         spellCheck
         className="nopan pointer-events-none h-full w-full border-0 bg-transparent px-1 py-0.5 outline-none placeholder:text-muted-foreground/60 focus:rounded-sm focus:bg-card/80 focus:ring-1 focus:ring-primary"
         style={{
@@ -664,7 +647,6 @@ function areNodePropsEqual(
     previous.isConnectable === next.isConnectable &&
     previous.data.canvasNode === next.data.canvasNode &&
     previous.data.tool === next.data.tool &&
-    previous.data.readonly === next.data.readonly &&
     previous.data.autoFocus === next.data.autoFocus &&
     previous.data.onResizeStart === next.data.onResizeStart &&
     previous.data.onResizeEnd === next.data.onResizeEnd &&
