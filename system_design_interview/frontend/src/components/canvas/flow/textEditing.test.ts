@@ -6,15 +6,14 @@ import { handleTextEditorKeyDown } from "@/components/canvas/flow/textEditing";
 function editorKeyEvent(
   key: string,
   isComposing = false,
-  modifiers: { metaKey?: boolean; ctrlKey?: boolean } = {}
+  modifiers: { shiftKey?: boolean } = {}
 ) {
   const blur = vi.fn();
   const preventDefault = vi.fn();
   const stopPropagation = vi.fn();
   const event = {
     key,
-    metaKey: modifiers.metaKey ?? false,
-    ctrlKey: modifiers.ctrlKey ?? false,
+    shiftKey: modifiers.shiftKey ?? false,
     nativeEvent: { isComposing },
     currentTarget: { blur },
     preventDefault,
@@ -63,10 +62,12 @@ describe("handleTextEditorKeyDown", () => {
     expect(onEditComplete).not.toHaveBeenCalled();
   });
 
-  it("allows plain Enter to insert a newline in multiline editors", () => {
+  it("allows Shift plus Enter to insert a newline in multiline editors", () => {
     const onEditComplete = vi.fn();
     const { event, blur, preventDefault, stopPropagation } = editorKeyEvent(
-      "Enter"
+      "Enter",
+      false,
+      { shiftKey: true }
     );
 
     handleTextEditorKeyDown(event, onEditComplete, { multiline: true });
@@ -77,11 +78,9 @@ describe("handleTextEditorKeyDown", () => {
     expect(onEditComplete).not.toHaveBeenCalled();
   });
 
-  it("finishes multiline editing with Command or Control plus Enter", () => {
+  it("finishes multiline editing with Enter", () => {
     const onEditComplete = vi.fn();
-    const { event, blur, preventDefault } = editorKeyEvent("Enter", false, {
-      metaKey: true
-    });
+    const { event, blur, preventDefault } = editorKeyEvent("Enter");
 
     handleTextEditorKeyDown(event, onEditComplete, { multiline: true });
 

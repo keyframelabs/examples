@@ -9,7 +9,7 @@ export function handleTextEditorKeyDown(
 ) {
   event.stopPropagation();
   if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-  if (options.multiline && !event.metaKey && !event.ctrlKey) return;
+  if (options.multiline && event.shiftKey) return;
 
   event.preventDefault();
   event.currentTarget.blur();
