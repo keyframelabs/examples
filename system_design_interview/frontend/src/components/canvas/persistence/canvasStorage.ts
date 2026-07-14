@@ -12,6 +12,19 @@ export interface CanvasStorage {
   setItem(key: string, value: string): void;
 }
 
+export function getCanvasStorage(
+  target: { readonly localStorage: CanvasStorage } | undefined =
+    typeof window === "undefined" ? undefined : window
+): CanvasStorage | undefined {
+  if (!target) return undefined;
+
+  try {
+    return target.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 export function loadCanvasState(
   storage: CanvasStorage | undefined,
   fallback: CanvasState

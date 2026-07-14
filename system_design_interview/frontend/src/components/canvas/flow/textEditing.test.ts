@@ -3,12 +3,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import { handleTextEditorKeyDown } from "@/components/canvas/flow/textEditing";
 
-function editorKeyEvent(key: string, isComposing = false) {
+function editorKeyEvent(
+  key: string,
+  isComposing = false,
+  modifiers: { metaKey?: boolean; ctrlKey?: boolean } = {}
+) {
   const blur = vi.fn();
   const preventDefault = vi.fn();
   const stopPropagation = vi.fn();
   const event = {
     key,
+    metaKey: modifiers.metaKey ?? false,
+    ctrlKey: modifiers.ctrlKey ?? false,
     nativeEvent: { isComposing },
     currentTarget: { blur },
     preventDefault,
@@ -55,5 +61,32 @@ describe("handleTextEditorKeyDown", () => {
     expect(preventDefault).not.toHaveBeenCalled();
     expect(blur).not.toHaveBeenCalled();
     expect(onEditComplete).not.toHaveBeenCalled();
+  });
+
+  it("allows plain Enter to insert a newline in multiline editors", () => {
+    const onEditComplete = vi.fn();
+    const { event, blur, preventDefault, stopPropagation } = editorKeyEvent(
+      "Enter"
+    );
+
+    handleTextEditorKeyDown(event, onEditComplete, { multiline: true });
+
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(blur).not.toHaveBeenCalled();
+    expect(onEditComplete).not.toHaveBeenCalled();
+  });
+
+  it("finishes multiline editing with Command or Control plus Enter", () => {
+    const onEditComplete = vi.fn();
+    const { event, blur, preventDefault } = editorKeyEvent("Enter", false, {
+      metaKey: true
+    });
+
+    handleTextEditorKeyDown(event, onEditComplete, { multiline: true });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(blur).toHaveBeenCalledOnce();
+    expect(onEditComplete).toHaveBeenCalledOnce();
   });
 });

@@ -5,6 +5,7 @@ import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
 import type { CanvasState } from "@/components/canvas/model/types";
 import {
+  getCanvasStorage,
   loadCanvasState,
   saveCanvasState
 } from "@/components/canvas/persistence/canvasStorage";
@@ -16,11 +17,9 @@ import {
 import { initialSystemDesignCanvas } from "@/utils/interview/initialCanvas";
 
 export function App() {
+  const [canvasStorage] = useState(getCanvasStorage);
   const [initialCanvas] = useState(() =>
-    loadCanvasState(
-      typeof window === "undefined" ? undefined : window.localStorage,
-      initialSystemDesignCanvas
-    )
+    loadCanvasState(canvasStorage, initialSystemDesignCanvas)
   );
   const [canvasText, setCanvasText] = useState(
     () => serializeCanvasToText(initialCanvas).text
@@ -41,8 +40,8 @@ export function App() {
     }
     const pending = pendingCanvasStateRef.current;
     pendingCanvasStateRef.current = null;
-    if (pending) saveCanvasState(window.localStorage, pending);
-  }, []);
+    if (pending) saveCanvasState(canvasStorage, pending);
+  }, [canvasStorage]);
 
   const handleCanvasChange = useCallback((state: CanvasState) => {
     pendingCanvasStateRef.current = state;

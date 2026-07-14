@@ -4,10 +4,12 @@ type TextEditorElement = HTMLInputElement | HTMLTextAreaElement;
 
 export function handleTextEditorKeyDown(
   event: KeyboardEvent<TextEditorElement>,
-  onEditComplete: () => void
+  onEditComplete: () => void,
+  options: { multiline?: boolean } = {}
 ) {
   event.stopPropagation();
   if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+  if (options.multiline && !event.metaKey && !event.ctrlKey) return;
 
   event.preventDefault();
   event.currentTarget.blur();

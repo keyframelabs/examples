@@ -36,6 +36,7 @@ export type CanvasAction =
     }
   | { type: "move-elements"; ids: string[]; dx: number; dy: number }
   | { type: "resize-node"; id: string; width: number; height: number }
+  | { type: "remove-table-field"; tableId: string; fieldId: string }
   | { type: "delete-elements"; ids: string[] }
   | { type: "settle-collisions"; pinnedIds?: string[] }
   | {
@@ -261,6 +262,43 @@ export function canvasReducer(
                 : Math.max(44, action.height)
           }
         }
+      };
+    }
+    case "remove-table-field": {
+      const table = state.elements[action.tableId];
+      if (
+        !table ||
+        table.kind !== "table" ||
+        !table.fields.some((field) => field.id === action.fieldId)
+      ) {
+        return state;
+      }
+
+      const elements: Record<string, CanvasElement> = {
+        ...state.elements,
+        [action.tableId]: {
+          ...table,
+          fields: table.fields.filter((field) => field.id !== action.fieldId)
+        }
+      };
+      const order = state.order.filter((id) => {
+        const element = state.elements[id];
+        const isAttachedFieldConnection =
+          element?.kind === "connection" &&
+          ((element.fromId === action.tableId &&
+            element.fromFieldId === action.fieldId) ||
+            (element.toId === action.tableId &&
+              element.toFieldId === action.fieldId));
+
+        if (isAttachedFieldConnection) delete elements[id];
+        return !isAttachedFieldConnection;
+      });
+
+      return {
+        ...state,
+        elements,
+        order,
+        selectedIds: state.selectedIds.filter((id) => Boolean(elements[id]))
       };
     }
     case "delete-elements": {

@@ -195,6 +195,67 @@ describe("canvas state model", () => {
     });
   });
 
+  it("removes connections attached to a deleted table field", () => {
+    const users = createNode("table", 0, 0, {
+      id: "users",
+      fields: [
+        createField({ id: "user_id", text: "id" }),
+        createField({ id: "email", text: "email" })
+      ]
+    });
+    const profiles = createNode("table", 320, 0, {
+      id: "profiles",
+      fields: [createField({ id: "profile_user_id", text: "user_id" })]
+    });
+    let state = [users, profiles].reduce(
+      (next, node) =>
+        canvasReducer(next, { type: "add-node", node, select: false }),
+      createEmptyCanvasState()
+    );
+
+    for (const connection of [
+      {
+        ...createConnection("users", "profiles", "", {
+          fromFieldId: "user_id",
+          toFieldId: "profile_user_id"
+        }),
+        id: "user_profile"
+      },
+      {
+        ...createConnection("profiles", "users", "", {
+          fromFieldId: "profile_user_id",
+          toFieldId: "user_id"
+        }),
+        id: "profile_user"
+      },
+      {
+        ...createConnection("users", "profiles", "", {
+          fromFieldId: "email"
+        }),
+        id: "email_profile"
+      }
+    ]) {
+      state = canvasReducer(state, {
+        type: "add-connection",
+        connection,
+        select: false
+      });
+    }
+
+    const updated = canvasReducer(
+      { ...state, selectedIds: ["user_profile"] },
+      { type: "remove-table-field", tableId: "users", fieldId: "user_id" }
+    );
+
+    expect(updated.elements.users).toMatchObject({
+      fields: [{ id: "email", text: "email" }]
+    });
+    expect(updated.elements.user_profile).toBeUndefined();
+    expect(updated.elements.profile_user).toBeUndefined();
+    expect(updated.elements.email_profile).toBeDefined();
+    expect(updated.selectedIds).toEqual([]);
+  });
+
   it("preserves table field ids while parsing edited table text", () => {
     const parsed = parseTableEditorValue("users\nid pk\nemail", [
       { id: "stable_id", text: "old id" },

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CANVAS_STORAGE_KEY,
+  getCanvasStorage,
   loadCanvasState,
   saveCanvasState,
   type CanvasStorage
@@ -46,6 +47,20 @@ describe("canvas persistence", () => {
     expect(loadCanvasState(storage, fallback)).toBe(fallback);
     storage.setItem(CANVAS_STORAGE_KEY, "not-json");
     expect(loadCanvasState(storage, fallback)).toBe(fallback);
+  });
+
+  it("safely reads a localStorage getter that may be unavailable", () => {
+    const storage = memoryStorage();
+    expect(getCanvasStorage({ localStorage: storage })).toBe(storage);
+
+    const restrictedWindow = Object.defineProperty({}, "localStorage", {
+      get() {
+        throw new Error("Storage access denied");
+      }
+    }) as { readonly localStorage: CanvasStorage };
+
+    expect(getCanvasStorage(restrictedWindow)).toBeUndefined();
+    expect(getCanvasStorage(undefined)).toBeUndefined();
   });
 });
 

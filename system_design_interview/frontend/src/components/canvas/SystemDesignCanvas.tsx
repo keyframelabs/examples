@@ -284,7 +284,7 @@ export function SystemDesignCanvas({
           x: item.position.x,
           y: item.position.y
         })),
-        [node.id],
+        finalNodes.map((item) => item.id),
         "altKey" in event && event.altKey
       );
     },
@@ -464,11 +464,9 @@ export function SystemDesignCanvas({
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
       apply({
-        type: "update-element",
-        id: tableId,
-        patch: {
-          fields: table.fields.filter((field) => field.id !== fieldId)
-        }
+        type: "remove-table-field",
+        tableId,
+        fieldId
       });
     },
     [apply, readonly]
@@ -480,6 +478,7 @@ export function SystemDesignCanvas({
 
   const handleEdgeDoubleClick = useCallback(
     (event: ReactMouseEvent, edge: SystemFlowEdge) => {
+      if (readonly) return;
       event.preventDefault();
       const connection = stateRef.current.elements[edge.id];
       if (!isConnection(connection)) return;
@@ -496,7 +495,7 @@ export function SystemDesignCanvas({
         return;
       }
     },
-    [apply]
+    [apply, readonly]
   );
 
   const handlePaneClick = useCallback(
@@ -690,6 +689,7 @@ export function SystemDesignCanvas({
           menu={cardinalityMenu}
           connection={state.elements[cardinalityMenu.connectionId]}
           onSelect={(cardinality) => {
+            if (readonly) return;
             apply({
               type: "update-element",
               id: cardinalityMenu.connectionId,

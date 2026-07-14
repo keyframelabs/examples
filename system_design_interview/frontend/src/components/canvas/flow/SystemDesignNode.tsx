@@ -448,7 +448,9 @@ function TextNode({
         spellCheck
         className="nopan nowheel pointer-events-none h-full w-full resize-none overflow-auto rounded-md border-0 bg-transparent p-0 text-left font-medium outline-none placeholder:text-muted-foreground/60 focus:ring-1 focus:ring-primary"
         onKeyDown={(event) =>
-          handleTextEditorKeyDown(event, data.onEditComplete)
+          handleTextEditorKeyDown(event, data.onEditComplete, {
+            multiline: true
+          })
         }
         onFocus={() => {
           if (data.autoFocus) data.onAutoFocusHandled(node.id);
