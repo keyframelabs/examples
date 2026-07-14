@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
 import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
@@ -15,12 +15,16 @@ import {
 } from "@/utils/sessionLossWarning";
 
 export function App() {
+  const [interviewStage, setInterviewStage] = useState<
+    "introduction" | "canvas"
+  >("introduction");
   const [canvasText, setCanvasText] = useState(
     () => serializeCanvasToText(initialSystemDesignCanvas).text
   );
   const [hasCanvasEdits, setHasCanvasEdits] = useState(false);
   const [canvasSyncStatus, setCanvasSyncStatus] =
     useState<CanvasSyncStatus>(INITIAL_CANVAS_SYNC_STATUS);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldWarnBeforeUnload = shouldWarnAboutSessionLoss({
     hasCanvasEdits,
     isSessionActive: canvasSyncStatus.isReady
@@ -35,9 +39,24 @@ export function App() {
     return registerSessionLossWarning(window);
   }, [shouldWarnBeforeUnload]);
 
+  useEffect(() => {
+    canvasContainerRef.current?.toggleAttribute(
+      "inert",
+      interviewStage !== "canvas"
+    );
+  }, [interviewStage]);
+
   return (
     <main className="relative h-screen min-h-screen overflow-hidden bg-canvas-paper text-canvas-ink">
-      <div className="absolute inset-0">
+      <div
+        ref={canvasContainerRef}
+        className={
+          interviewStage === "canvas"
+            ? "absolute inset-0 opacity-100"
+            : "pointer-events-none absolute inset-0 opacity-0"
+        }
+        aria-hidden={interviewStage !== "canvas"}
+      >
         <SystemDesignCanvas
           initialState={initialSystemDesignCanvas}
           className="h-full"
@@ -46,10 +65,15 @@ export function App() {
         />
       </div>
 
-      <CanvasSyncIndicator status={canvasSyncStatus} />
+      {interviewStage === "canvas" ? (
+        <CanvasSyncIndicator status={canvasSyncStatus} />
+      ) : null}
 
       <FloatingAvatarWindow
         canvasText={canvasText}
+        stage={interviewStage}
+        onEnterCanvas={() => setInterviewStage("canvas")}
+        onReturnToIntroduction={() => setInterviewStage("introduction")}
         onCanvasSyncStatusChange={setCanvasSyncStatus}
       />
     </main>

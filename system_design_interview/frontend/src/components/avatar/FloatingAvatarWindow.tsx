@@ -1,22 +1,38 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { PersonaView } from "@keyframelabs/elements";
 import {
   AlertCircle,
+  CameraOff,
+  ChevronRight,
   GripHorizontal,
   Loader2,
   Maximize2,
   Mic,
   Minus,
+  MoveDiagonal,
   PhoneOff,
-  RadioTower
+  X
 } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent
+} from "react";
+
+import personSharpUrl from "@/assets/person-sharp.svg";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
 import { createLiveSession } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import {
   createCanvasContextSync,
   INITIAL_CANVAS_SYNC_STATUS,
@@ -28,11 +44,23 @@ import {
   type PersonaViewRuntime,
   sendPersonaContext
 } from "@/utils/avatar/personaViewRuntime";
+import {
+  requestUserCamera,
+  stopMediaStream,
+  userCameraErrorMessage
+} from "@/utils/interview/userCamera";
+
+type InterviewStage = "introduction" | "canvas";
 
 type FloatingAvatarWindowProps = {
   canvasText: string;
+  stage: InterviewStage;
+  onEnterCanvas: () => void;
+  onReturnToIntroduction: () => void;
   onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
 };
+
+type CameraStatus = "idle" | "requesting" | "ready" | "unavailable";
 
 type Position = {
   x: number;
@@ -45,42 +73,66 @@ type DragState = {
   startPosition: Position;
 };
 
-const PANEL_WIDTH = 392;
-const PANEL_HEIGHT = 500;
-const MINIMIZED_WIDTH = 260;
-const MINIMIZED_HEIGHT = 56;
+type PanelSize = {
+  width: number;
+  height: number;
+};
+
+type ResizeState = {
+  pointerId: number;
+  startClient: Position;
+  startPosition: Position;
+  startSize: PanelSize;
+  aspectRatio: number;
+};
+
+const PANEL_WIDTH = 404;
+const PANEL_HEIGHT = 816;
+const PANEL_ASPECT_RATIO = PANEL_WIDTH / PANEL_HEIGHT;
+const INITIAL_PANEL_WIDTH = 280;
+const MIN_PANEL_WIDTH = 240;
+const MINIMIZED_HEIGHT = 40;
+const CANVAS_TOP_CONTROLS_BOUNDARY = 56;
 
 export function FloatingAvatarWindow({
   canvasText,
+  stage,
+  onEnterCanvas,
+  onReturnToIntroduction,
   onCanvasSyncStatusChange
 }: FloatingAvatarWindowProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const personaContainerRef = useRef<HTMLDivElement | null>(null);
+  const userVideoRef = useRef<HTMLVideoElement | null>(null);
+  const userCameraStreamRef = useRef<MediaStream | null>(null);
   const runtimeRef = useRef<PersonaViewRuntime | null>(null);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
   const latestCanvasTextRef = useRef(canvasText);
   const lastLoggedContextVersionRef = useRef(0);
   const lastLoggedContextErrorRef = useRef<string | null>(null);
-  const [position, setPosition] = useState<Position>(() => initialPosition(PANEL_WIDTH, PANEL_HEIGHT));
+  const [panelSize, setPanelSize] = useState<PanelSize>(initialPanelSize);
+  const [position, setPosition] = useState<Position>(() =>
+    initialPosition(panelSize.width, panelSize.height)
+  );
   const [minimized, setMinimized] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const [canvasSyncStatus, setCanvasSyncStatus] = useState<CanvasSyncStatus>(
     INITIAL_CANVAS_SYNC_STATUS
   );
   const showConnectionLog = shouldShowConnectionLog();
-  const contextPending =
-    canvasSyncStatus.isSending || canvasSyncStatus.pendingEdits > 0;
 
   useEffect(() => {
     latestCanvasTextRef.current = canvasText;
     const runtime = runtimeRef.current;
-    if (!runtime?.contextSync.getStatus().isReady) {
-      return;
-    }
+    if (!runtime?.contextSync.getStatus().isReady) return;
 
     runtime.contextSync.push(canvasText);
   }, [canvasText]);
@@ -90,37 +142,66 @@ export function FloatingAvatarWindow({
   }, [canvasSyncStatus, onCanvasSyncStatusChange]);
 
   useEffect(() => {
+    const video = userVideoRef.current;
+    if (!video) return;
+
+    video.srcObject = cameraStream;
+    if (cameraStream) {
+      void video.play().catch(() => {
+        // The stream stays attached; browsers may begin playback after interaction.
+      });
+    }
+
+    return () => {
+      if (video.srcObject === cameraStream) video.srcObject = null;
+    };
+  }, [cameraStream]);
+
+  useEffect(() => {
+    if (stage === "introduction") setMinimized(false);
+  }, [stage]);
+
+  useEffect(() => {
     return () => {
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerEnd);
       window.removeEventListener("pointercancel", handleWindowPointerEnd);
-      void cleanupRuntime().catch((err) => {
-        console.error("Failed to clean up live interviewer.", err);
+      window.removeEventListener("pointermove", handleWindowResizePointerMove);
+      window.removeEventListener("pointerup", handleWindowResizePointerEnd);
+      window.removeEventListener("pointercancel", handleWindowResizePointerEnd);
+      stopMediaStream(userCameraStreamRef.current);
+      userCameraStreamRef.current = null;
+      void cleanupRuntime().catch((error) => {
+        console.error("Failed to clean up Lyra.", error);
       });
     };
   }, []);
 
   useEffect(() => {
+    if (stage !== "canvas") return;
+
     const panelSize = getPanelSize();
-    setPosition((current) => clampPosition(
-      current,
-      panelSize.width,
-      panelSize.height
-    ));
-  }, [minimized]);
+    setPosition((current) =>
+      clampPosition(current, panelSize.width, panelSize.height)
+    );
+  }, [minimized, stage]);
 
   useEffect(() => {
     function handleResize() {
+      if (stage !== "canvas") return;
+
       const panelSize = getPanelSize();
-      setPosition((current) => clampPosition(current, panelSize.width, panelSize.height));
+      setPosition((current) =>
+        clampPosition(current, panelSize.width, panelSize.height)
+      );
     }
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [minimized, stage]);
 
   async function connect() {
-    setError(null);
+    setAvatarError(null);
     setEvents([]);
     setIsConnecting(true);
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
@@ -130,10 +211,8 @@ export function FloatingAvatarWindow({
     try {
       await cleanupRuntime();
       const liveSession = await createLiveSession();
-      const container = containerRef.current;
-      if (!container) {
-        throw new Error("Avatar container is not ready.");
-      }
+      const container = personaContainerRef.current;
+      if (!container) throw new Error("Avatar container is not ready.");
 
       clearContainer(container);
       const closeState = { expected: false, disconnectHandled: false };
@@ -142,7 +221,7 @@ export function FloatingAvatarWindow({
         container,
         sessionDetails: liveSession.sessionDetails,
         voiceAgentDetails: liveSession.voiceAgentDetails,
-        videoFit: "contain",
+        videoFit: "cover",
         onStateChange: (nextStatus) => {
           logEvent(`PersonaView state: ${nextStatus}`);
           setIsConnecting(nextStatus === "connecting");
@@ -152,24 +231,20 @@ export function FloatingAvatarWindow({
           logEvent(`Avatar playback: ${nextStatus}`);
         },
         onDisconnect: () => {
-          logEvent("Live interviewer disconnected");
-          if (closeState.expected || closeState.disconnectHandled) {
-            return;
-          }
+          logEvent("Lyra disconnected");
+          if (closeState.expected || closeState.disconnectHandled) return;
 
           closeState.disconnectHandled = true;
-          handleUnexpectedDisconnect("Live interviewer disconnected.");
+          handleUnexpectedDisconnect("Lyra disconnected.");
         },
-        onError: (err) => {
-          connectError = err.message;
-          logEvent(`PersonaView error: ${err.message}`);
-          setError(`Live interviewer error: ${err.message}`);
+        onError: (error) => {
+          connectError = error.message;
+          logEvent(`PersonaView error: ${error.message}`);
+          setAvatarError(`Lyra error: ${error.message}`);
         }
       });
       const contextSync = createCanvasContextSync({
-        sendContextUpdate: (text) => {
-          sendPersonaContext(view, text);
-        },
+        sendContextUpdate: (text) => sendPersonaContext(view, text),
         onStatusChange: handleCanvasContextSyncStatus
       });
 
@@ -180,34 +255,39 @@ export function FloatingAvatarWindow({
         closeState
       };
 
-      logEvent("Connecting live interviewer");
+      logEvent("Connecting Lyra");
       await view.connect();
       if (view.status !== "connected") {
-        throw new Error(connectError ?? "Live interviewer failed to connect.");
+        throw new Error(connectError ?? "Lyra failed to connect.");
       }
 
       const runtime = runtimeRef.current;
       if (runtime?.view === view) {
-        runtime.detachTranscriptObserver = attachPersonaTranscriptObserver(view, (transcript) => {
-          if (transcript.isFinal && transcript.text.trim()) {
-            logEvent(`Transcript received: ${transcript.role}`);
+        runtime.detachTranscriptObserver = attachPersonaTranscriptObserver(
+          view,
+          (transcript) => {
+            if (transcript.isFinal && transcript.text.trim()) {
+              logEvent(`Transcript received: ${transcript.role}`);
+            }
           }
-        });
+        );
       }
 
       contextSync.push(latestCanvasTextRef.current);
       contextSync.start();
       logEvent("Canvas context sync started");
-
       setIsConnected(true);
-      logEvent("Live interviewer connected");
-    } catch (err) {
+      logEvent("Lyra connected");
+    } catch (error) {
       try {
         await cleanupRuntime();
-      } catch (cleanupErr) {
-        console.error("Failed to clean up live interviewer after connection error.", cleanupErr);
+      } catch (cleanupError) {
+        console.error(
+          "Failed to clean up Lyra after connection error.",
+          cleanupError
+        );
       }
-      setError(formatError(err));
+      setAvatarError(formatAvatarError(error));
       setIsConnected(false);
       setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     } finally {
@@ -215,12 +295,46 @@ export function FloatingAvatarWindow({
     }
   }
 
-  async function endCall() {
-    setError(null);
+  async function enableCamera() {
+    setCameraError(null);
+    setCameraStatus("requesting");
+
+    try {
+      const stream = await requestUserCamera();
+      const previousStream = userCameraStreamRef.current;
+      userCameraStreamRef.current = stream;
+      setCameraStream(stream);
+      setCameraStatus("ready");
+      if (previousStream !== stream) stopMediaStream(previousStream);
+    } catch (error) {
+      setCameraStatus("unavailable");
+      setCameraError(userCameraErrorMessage(error));
+    }
+  }
+
+  function disconnectVideo() {
+    stopMediaStream(userCameraStreamRef.current);
+    userCameraStreamRef.current = null;
+    setCameraStream(null);
+    setCameraStatus("idle");
+    setCameraError(null);
+  }
+
+  async function joinInterview() {
+    const tasks: Promise<void>[] = [];
+    if (cameraStatus !== "ready") tasks.push(enableCamera());
+    if (!isConnected) tasks.push(connect());
+    await Promise.allSettled(tasks);
+  }
+
+  async function disconnectLyra() {
+    setAvatarError(null);
     try {
       await cleanupRuntime();
-    } catch (err) {
-      setError(`Could not cleanly end the live interviewer: ${formatError(err)}`);
+    } catch (error) {
+      setAvatarError(
+        `Could not cleanly disconnect Lyra: ${formatAvatarError(error)}`
+      );
     }
   }
 
@@ -265,9 +379,7 @@ export function FloatingAvatarWindow({
       lastLoggedContextErrorRef.current = status.error;
       logEvent(`Canvas context sync failed: ${status.error}`);
     }
-    if (!status.error) {
-      lastLoggedContextErrorRef.current = null;
-    }
+    if (!status.error) lastLoggedContextErrorRef.current = null;
 
     if (status.lastSentVersion > lastLoggedContextVersionRef.current) {
       lastLoggedContextVersionRef.current = status.lastSentVersion;
@@ -276,9 +388,9 @@ export function FloatingAvatarWindow({
   }
 
   function handleUnexpectedDisconnect(message: string) {
-    setError(message);
-    void cleanupRuntime().catch((err) => {
-      setError(`${message} ${formatError(err)}`);
+    setAvatarError(message);
+    void cleanupRuntime().catch((error) => {
+      setAvatarError(`${message} ${formatAvatarError(error)}`);
     });
   }
 
@@ -288,13 +400,16 @@ export function FloatingAvatarWindow({
       minute: "2-digit",
       second: "2-digit"
     });
-    setEvents((current) => [...current.slice(-7), `${timestamp} ${message}`]);
+    setEvents((current) => [
+      ...current.slice(-7),
+      `${timestamp} ${message}`
+    ]);
   }
 
-  function handleHeaderPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) {
-      return;
-    }
+  function handleHeaderPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>
+  ) {
+    if (stage !== "canvas" || event.button !== 0) return;
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -308,13 +423,14 @@ export function FloatingAvatarWindow({
     window.addEventListener("pointercancel", handleWindowPointerEnd);
   }
 
-  function handleHeaderPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+  function handleHeaderPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>
+  ) {
     updateDragPosition(event.pointerId, event.clientX, event.clientY);
   }
 
   function handleHeaderPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     endDrag(event.pointerId);
-
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -328,11 +444,13 @@ export function FloatingAvatarWindow({
     endDrag(event.pointerId);
   }
 
-  function updateDragPosition(pointerId: number, clientX: number, clientY: number) {
+  function updateDragPosition(
+    pointerId: number,
+    clientX: number,
+    clientY: number
+  ) {
     const drag = dragRef.current;
-    if (!drag || drag.pointerId !== pointerId) {
-      return;
-    }
+    if (!drag || drag.pointerId !== pointerId) return;
 
     const next = {
       x: drag.startPosition.x + clientX - drag.startClient.x,
@@ -343,143 +461,523 @@ export function FloatingAvatarWindow({
   }
 
   function endDrag(pointerId: number) {
-    if (dragRef.current?.pointerId === pointerId) {
-      dragRef.current = null;
-    }
+    if (dragRef.current?.pointerId === pointerId) dragRef.current = null;
     window.removeEventListener("pointermove", handleWindowPointerMove);
     window.removeEventListener("pointerup", handleWindowPointerEnd);
     window.removeEventListener("pointercancel", handleWindowPointerEnd);
   }
 
-  const statusText = isConnected
-    ? "Live"
-    : isConnecting
-      ? "Connecting"
-      : error
-        ? "Attention"
-        : "Ready";
-  const subtitle = isConnected
-    ? contextPending
-      ? "Syncing"
-      : canvasSyncStatus.lastSentAt
-        ? "Synced"
-        : "Live interview"
-    : "System design interviewer";
+  function handleResizePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) {
+    if (stage !== "canvas" || minimized || event.button !== 0) return;
+
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      startClient: { x: event.clientX, y: event.clientY },
+      startPosition: { x: rect.left, y: rect.top },
+      startSize: { width: rect.width, height: rect.height },
+      aspectRatio: rect.width / rect.height
+    };
+    window.addEventListener("pointermove", handleWindowResizePointerMove);
+    window.addEventListener("pointerup", handleWindowResizePointerEnd);
+    window.addEventListener("pointercancel", handleWindowResizePointerEnd);
+  }
+
+  function handleResizePointerMove(
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) {
+    updatePanelSize(event.pointerId, event.clientX, event.clientY);
+  }
+
+  function handleResizePointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
+    endResize(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleWindowResizePointerMove(event: PointerEvent) {
+    updatePanelSize(event.pointerId, event.clientX, event.clientY);
+  }
+
+  function handleWindowResizePointerEnd(event: PointerEvent) {
+    endResize(event.pointerId);
+  }
+
+  function updatePanelSize(
+    pointerId: number,
+    clientX: number,
+    clientY: number
+  ) {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== pointerId) return;
+
+    const widthScale =
+      (resize.startSize.width + resize.startClient.x - clientX) /
+      resize.startSize.width;
+    const heightScale =
+      (resize.startSize.height + clientY - resize.startClient.y) /
+      resize.startSize.height;
+    const scale =
+      Math.abs(widthScale - 1) >= Math.abs(heightScale - 1)
+        ? widthScale
+        : heightScale;
+
+    const anchorRight = resize.startPosition.x + resize.startSize.width;
+    const nextSize = getClampedPanelSize(
+      resize.startSize.width * scale,
+      resize.aspectRatio,
+      anchorRight,
+      resize.startPosition.y
+    );
+    setPanelSize(nextSize);
+    setPosition(
+      clampPosition(
+        {
+          x: anchorRight - nextSize.width,
+          y: resize.startPosition.y
+        },
+        nextSize.width,
+        nextSize.height
+      )
+    );
+  }
+
+  function handleResizeKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>
+  ) {
+    const step = event.shiftKey ? 32 : 16;
+    const direction =
+      event.key === "ArrowLeft" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "ArrowRight" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (direction === 0) return;
+
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const aspectRatio = rect.width / rect.height;
+    const widthStep =
+      event.key === "ArrowUp" || event.key === "ArrowDown"
+        ? step * aspectRatio
+        : step;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const nextSize = getClampedPanelSize(
+      rect.width + direction * widthStep,
+      aspectRatio,
+      rect.right,
+      rect.top
+    );
+    setPanelSize(nextSize);
+    setPosition(
+      clampPosition(
+        { x: rect.right - nextSize.width, y: rect.top },
+        nextSize.width,
+        nextSize.height
+      )
+    );
+  }
+
+  function getClampedPanelSize(
+    targetWidth: number,
+    aspectRatio: number,
+    anchorRight: number,
+    top: number
+  ): PanelSize {
+    const maxWidth = Math.min(
+      PANEL_WIDTH,
+      Math.max(1, anchorRight - 12),
+      Math.max(1, window.innerHeight - top - 12) * aspectRatio
+    );
+    const width = clamp(
+      targetWidth,
+      Math.min(MIN_PANEL_WIDTH, maxWidth),
+      maxWidth
+    );
+
+    return {
+      width,
+      height: width / aspectRatio
+    };
+  }
+
+  function endResize(pointerId: number) {
+    if (resizeRef.current?.pointerId === pointerId) resizeRef.current = null;
+    window.removeEventListener("pointermove", handleWindowResizePointerMove);
+    window.removeEventListener("pointerup", handleWindowResizePointerEnd);
+    window.removeEventListener("pointercancel", handleWindowResizePointerEnd);
+  }
+
+  const intro = stage === "introduction";
 
   return (
-    <div
-      className="fixed left-0 top-0 z-40"
-      style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
-    >
-      <Card
-        ref={panelRef}
+    <>
+      {!intro ? (
+        <Card className="fixed right-4 top-4 z-50 bg-card/95 p-1 backdrop-blur-sm">
+          <TooltipProvider delayDuration={250}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7"
+                  aria-label="Exit canvas and return to introduction"
+                  onClick={onReturnToIntroduction}
+                >
+                  <X size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Exit canvas</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </Card>
+      ) : null}
+
+      <div
         className={cn(
-          minimized
-            ? "w-[min(260px,calc(100vw-24px))]"
-            : "w-[min(392px,calc(100vw-24px))]",
-          "overflow-hidden rounded-lg bg-card text-card-foreground shadow-float"
+          "fixed z-40",
+          intro
+            ? "inset-0 overflow-y-auto bg-canvas-paper"
+            : "left-0 top-0"
         )}
+        style={
+          intro
+            ? undefined
+            : { transform: `translate3d(${position.x}px, ${position.y}px, 0)` }
+        }
       >
         <div
-          className="flex h-12 cursor-move touch-none items-center gap-2 border-b border-border bg-foreground px-3 text-background"
-          onPointerDown={handleHeaderPointerDown}
-          onPointerMove={handleHeaderPointerMove}
-          onPointerUp={handleHeaderPointerUp}
-          onPointerCancel={handleHeaderPointerUp}
+          className={cn(
+            intro &&
+            "mx-auto grid min-h-full w-full max-w-7xl grid-rows-[1fr_auto_1fr] px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+          )}
         >
-          <GripHorizontal className="size-4 shrink-0 text-background/55" />
-          <RadioTower className="size-4 shrink-0 text-accent" />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="truncate text-sm font-semibold">Lyra</div>
-              <Badge
-                variant={error ? "destructive" : isConnected ? "default" : "secondary"}
-                className="h-5 shrink-0 px-1.5 py-0 text-[10px]"
-              >
-                {statusText}
-              </Badge>
+          {intro ? (
+            <div className="mb-3 translate-y-0 self-end text-center sm:-translate-y-15">
+              <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                Ace your next system design interview
+              </h1>
+              <p className="mx-auto mt-3 max-w-2xl font-body text-sm leading-6 text-muted-foreground sm:text-base">
+                Practice designing tinyurl with Lyra
+              </p>
             </div>
-            <div className="truncate text-[11px] text-background/60">{subtitle}</div>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0 text-background/80 hover:bg-background/10 hover:text-background"
-            aria-label={minimized ? "Restore avatar window" : "Minimize avatar window"}
-            title={minimized ? "Restore" : "Minimize"}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-            }}
-            onClick={() => setMinimized((current) => !current)}
-          >
-            {minimized ? <Maximize2 className="size-4" /> : <Minus className="size-4" />}
-          </Button>
-        </div>
+          ) : null}
 
-        {!minimized ? (
-          <div className="grid gap-3 p-3">
-            <div className="relative aspect-square min-h-[300px] overflow-hidden rounded-md bg-canvas-avatar-surface">
-              <div ref={containerRef} className="h-full w-full overflow-hidden" />
-              {!isConnected ? (
-                <div className="absolute inset-0 grid place-items-center px-5 text-center">
-                  <div>
-                    <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-background/10 text-background">
-                      <Mic className="size-5" />
+          <Card
+            ref={panelRef}
+            style={
+              !intro
+                ? {
+                    width: `${panelSize.width}px`,
+                    height: minimized ? undefined : `${panelSize.height}px`
+                  }
+                : undefined
+            }
+            className={cn(
+              "group relative flex flex-col overflow-hidden bg-card text-card-foreground shadow-float",
+              intro
+                ? "mx-auto w-full max-w-[814px] translate-y-0 rounded-2xl border-border/80 sm:translate-y-8"
+                : minimized
+                  ? "max-w-[calc(100vw-24px)] rounded-lg"
+                  : "w-[min(404px,calc(100vw-24px))] max-w-[min(404px,calc(100vw-24px))] max-h-[calc(100vh-68px)] rounded-lg"
+            )}
+          >
+            {!intro ? (
+              <div
+                className="flex h-9 cursor-move touch-none items-center border-b border-border bg-card px-2"
+                onPointerDown={handleHeaderPointerDown}
+                onPointerMove={handleHeaderPointerMove}
+                onPointerUp={handleHeaderPointerUp}
+                onPointerCancel={handleHeaderPointerUp}
+              >
+                <GripHorizontal className="size-4 text-muted-foreground" />
+                <div className="flex-1" />
+                <TooltipProvider delayDuration={250}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
+                        aria-label={
+                          minimized
+                            ? "Restore video window"
+                            : "Minimize video window"
+                        }
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={() => setMinimized((current) => !current)}
+                      >
+                        {minimized ? (
+                          <Maximize2 className="size-4" />
+                        ) : (
+                          <Minus className="size-4" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {minimized ? "Restore" : "Minimize"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            ) : null}
+
+            <div
+              className={cn(
+                !intro &&
+                  !minimized &&
+                  "flex min-h-0 flex-1 flex-col overflow-hidden"
+              )}
+            >
+            <div
+              className={cn(
+                "grid items-center justify-items-center",
+                intro
+                  ? "gap-2 p-2 sm:grid-cols-2 sm:p-3"
+                  : "min-h-0 flex-1 grid-rows-2 gap-1 p-1",
+                minimized && !intro && "hidden"
+              )}
+            >
+              <section
+                className={cn(
+                  "overflow-hidden rounded-xl border bg-muted/40",
+                  intro
+                    ? "order-1 w-full max-w-[386px]"
+                    : "order-2 h-full max-h-full aspect-square w-auto max-w-full"
+                )}
+                aria-label="Your camera preview"
+              >
+                <div
+                  className={cn(
+                    "relative overflow-hidden bg-foreground",
+                    intro ? "aspect-square" : "h-full w-full"
+                  )}
+                >
+                  <video
+                    ref={userVideoRef}
+                    className={cn(
+                      "h-full w-full scale-x-[-1] object-cover",
+                      cameraStatus !== "ready" && "invisible"
+                    )}
+                    autoPlay
+                    muted
+                    playsInline
+                    aria-label="Your live camera preview"
+                  />
+                  {cameraStatus !== "ready" ? (
+                    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
+                      <PersonPlaceholder />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="relative z-10 shadow-lg"
+                        disabled={cameraStatus === "requesting"}
+                        onClick={() => void enableCamera()}
+                      >
+                        {cameraStatus === "requesting" ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : null}
+                        {cameraStatus === "requesting"
+                          ? "Requesting camera"
+                          : cameraStatus === "unavailable"
+                            ? "Retry camera"
+                            : "Enable camera"}
+                      </Button>
                     </div>
-                    <p className="text-sm font-medium text-background">Live interviewer</p>
-                    <p className="mt-1 text-xs text-background/60">System design interview</p>
+                  ) : null}
+                  {cameraStatus === "ready" ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon-sm"
+                      className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
+                      aria-label="Disconnect video"
+                      title="Disconnect video"
+                      onClick={disconnectVideo}
+                    >
+                      <CameraOff className="size-4" />
+                    </Button>
+                  ) : null}
+                  <div
+                    className={cn(
+                      "absolute bottom-2 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm",
+                      intro ? "left-2" : "left-8"
+                    )}
+                  >
+                    You
                   </div>
                 </div>
-              ) : null}
-            </div>
+              </section>
 
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                className="flex-1 font-semibold"
-                onClick={() => {
-                  void connect();
-                }}
-                disabled={isConnecting || isConnected}
+              <section
+                className={cn(
+                  "overflow-hidden rounded-xl border bg-muted/40",
+                  intro
+                    ? "order-2 w-full max-w-[386px]"
+                    : "order-1 h-full max-h-full aspect-square w-auto max-w-full"
+                )}
+                aria-label="Lyra video"
               >
-                {isConnecting ? <Loader2 className="size-4 animate-spin" /> : <Mic className="size-4" />}
-                Start
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1 font-semibold"
-                onClick={() => {
-                  void endCall();
-                }}
-                disabled={!isConnected && !runtimeRef.current}
-              >
-                <PhoneOff className="size-4" />
-                End
-              </Button>
-            </div>
-
-            {error ? (
-              <Alert variant="destructive">
-                <AlertCircle className="size-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            {showConnectionLog && events.length > 0 ? (
-              <ScrollArea className="h-28 rounded-md border bg-muted text-xs text-muted-foreground">
-                <div className="p-2">
-                  {events.map((event) => (
-                    <div key={event}>{event}</div>
-                  ))}
+                <div
+                  className={cn(
+                    "relative overflow-hidden bg-canvas-avatar-surface",
+                    intro ? "aspect-square" : "h-full w-full"
+                  )}
+                >
+                  <div
+                    ref={personaContainerRef}
+                    className="h-full w-full overflow-hidden [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
+                  />
+                  {!isConnected ? (
+                    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
+                      <PersonPlaceholder />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="relative z-10 shadow-lg"
+                        disabled={isConnecting}
+                        onClick={() => void connect()}
+                      >
+                        {isConnecting ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : null}
+                        {isConnecting ? "Lyra is joining" : "Connect Lyra"}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {isConnected ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon-sm"
+                      className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
+                      aria-label="Disconnect Lyra"
+                      title="Disconnect Lyra"
+                      onClick={() => void disconnectLyra()}
+                    >
+                      <PhoneOff className="size-4" />
+                    </Button>
+                  ) : null}
+                  <div
+                    className={cn(
+                      "absolute bottom-2 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm",
+                      intro ? "left-2" : "left-8"
+                    )}
+                  >
+                    Lyra
+                  </div>
                 </div>
-              </ScrollArea>
+              </section>
+            </div>
+
+            {intro ? (
+              <div className="border-t border-border p-3">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  {isConnected ? (
+                    <Button
+                      type="button"
+                      className="flex-1 font-semibold"
+                      onClick={onEnterCanvas}
+                    >
+                      Open design canvas
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      className="flex-1 font-semibold"
+                      onClick={() => void joinInterview()}
+                      disabled={isConnecting || cameraStatus === "requesting"}
+                    >
+                      {isConnecting || cameraStatus === "requesting" ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Mic className="size-4" />
+                      )}
+                      Join interview
+                    </Button>
+                  )}
+                  {!isConnected ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 font-semibold"
+                      onClick={onEnterCanvas}
+                    >
+                      Open canvas without joining
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
-          </div>
-        ) : null}
-      </Card>
-    </div>
+
+            {(avatarError || cameraError) && (!minimized || intro) ? (
+              <div className="grid gap-2 border-t border-border p-3 sm:px-6">
+                {avatarError ? (
+                  <Alert variant="destructive">
+                    <AlertCircle className="size-4" />
+                    <AlertDescription>{avatarError}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {cameraError ? (
+                  <Alert>
+                    <CameraOff className="size-4" />
+                    <AlertDescription>{cameraError}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </div>
+            ) : null}
+
+            {showConnectionLog && events.length > 0 && (!minimized || intro) ? (
+              <div className="border-t border-border p-3 sm:px-6">
+                <ScrollArea className="h-28 rounded-md border bg-muted text-xs text-muted-foreground">
+                  <div className="p-2">
+                    {events.map((event) => (
+                      <div key={event}>{event}</div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            ) : null}
+            </div>
+
+            {!intro && !minimized ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="pointer-events-none absolute bottom-0 left-0 z-30 size-6 touch-none cursor-nesw-resize rounded-none rounded-tr-md bg-card/85 p-0 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                aria-label="Resize video window"
+                onPointerDown={handleResizePointerDown}
+                onPointerMove={handleResizePointerMove}
+                onPointerUp={handleResizePointerUp}
+                onPointerCancel={handleResizePointerUp}
+                onKeyDown={handleResizeKeyDown}
+              >
+                <MoveDiagonal className="size-3" />
+              </Button>
+            ) : null}
+          </Card>
+          {intro ? <div aria-hidden="true" /> : null}
+        </div>
+      </div>
+    </>
   );
 
   function getPanelSize(): { width: number; height: number } {
@@ -489,49 +987,98 @@ export function FloatingAvatarWindow({
     }
 
     return minimized
-      ? { width: MINIMIZED_WIDTH, height: MINIMIZED_HEIGHT }
-      : { width: PANEL_WIDTH, height: PANEL_HEIGHT };
+      ? { width: panelSize.width, height: MINIMIZED_HEIGHT }
+      : panelSize;
   }
+}
+
+function PersonPlaceholder() {
+  const maskImage = `url("${personSharpUrl}")`;
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 bg-muted-foreground/70"
+      style={{
+        WebkitMaskImage: maskImage,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "cover",
+        maskImage,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "cover"
+      }}
+    />
+  );
 }
 
 function clearContainer(container: HTMLElement) {
-  while (container.firstChild) {
-    container.firstChild.remove();
-  }
+  while (container.firstChild) container.firstChild.remove();
 }
 
 function shouldShowConnectionLog(): boolean {
+  if (typeof window === "undefined") return false;
+
   const params = new URLSearchParams(window.location.search);
   return params.has("cli") || window.location.hash.toLowerCase().includes("cli");
 }
 
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : "Could not connect the live avatar.";
+function formatAvatarError(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Could not connect Lyra.";
+}
+
+function initialPanelSize(): PanelSize {
+  if (typeof window === "undefined") {
+    return {
+      width: INITIAL_PANEL_WIDTH,
+      height: INITIAL_PANEL_WIDTH / PANEL_ASPECT_RATIO
+    };
+  }
+
+  const maxWidth = Math.min(
+    PANEL_WIDTH,
+    Math.max(1, window.innerWidth - 24),
+    Math.max(1, window.innerHeight - CANVAS_TOP_CONTROLS_BOUNDARY - 12) *
+      PANEL_ASPECT_RATIO
+  );
+  const width = Math.min(INITIAL_PANEL_WIDTH, maxWidth);
+
+  return { width, height: width / PANEL_ASPECT_RATIO };
 }
 
 function initialPosition(width: number, height: number): Position {
   if (typeof window === "undefined") {
-    return { x: 24, y: 24 };
+    return { x: 24, y: CANVAS_TOP_CONTROLS_BOUNDARY };
   }
 
-  return clampPosition({
-    x: window.innerWidth - width - 24,
-    y: 24
-  }, width, height);
+  return clampPosition(
+    {
+      x: window.innerWidth - width - 24,
+      y: CANVAS_TOP_CONTROLS_BOUNDARY
+    },
+    width,
+    height
+  );
 }
 
-function clampPosition(position: Position, width: number, height: number): Position {
-  if (typeof window === "undefined") {
-    return position;
-  }
+function clampPosition(
+  position: Position,
+  width: number,
+  height: number
+): Position {
+  if (typeof window === "undefined") return position;
 
   const margin = 12;
   const maxX = Math.max(margin, window.innerWidth - width - margin);
-  const maxY = Math.max(margin, window.innerHeight - height - margin);
+  const minY = CANVAS_TOP_CONTROLS_BOUNDARY;
+  const maxY = Math.max(minY, window.innerHeight - height - margin);
 
   return {
     x: clamp(position.x, margin, maxX),
-    y: clamp(position.y, margin, maxY)
+    y: clamp(position.y, minY, maxY)
   };
 }
 
