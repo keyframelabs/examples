@@ -4,7 +4,6 @@ import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
 import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
 import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
-import { SessionLossWarning } from "@/components/interview/SessionLossWarning";
 import {
   INITIAL_CANVAS_SYNC_STATUS,
   type CanvasSyncStatus
@@ -46,8 +45,6 @@ export function App() {
           onCanvasTextChange={handleCanvasTextChange}
         />
       </div>
-
-      <SessionLossWarning />
 
       <CanvasSyncIndicator status={canvasSyncStatus} />
 
