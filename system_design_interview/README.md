@@ -41,61 +41,25 @@ Do not overwrite an existing customized component without reviewing the resultin
 
 ## ElevenLabs Agent Setup
 
-Each interview packet uses its own preconfigured ElevenLabs agent. Map packet IDs to agent IDs in `.env`:
+Configure the shared ElevenLabs agent in `.env`:
 
 ```dotenv
-ELEVENLABS_AGENT_IDS={"tinyurl-system-design":"agent_..."}
+ELEVENLABS_AGENT_ID=agent_...
 ```
 
-This mapping connects an interview packet ID to the dedicated ElevenLabs agent that stores that problem's prompt. The
-backend uses it both to synchronize the correct agent during startup and to select that agent when an interview begins.
-Keeping the mapping in `.env` allows development, staging, and production to use different agent IDs without changing
-application code.
+Startup validates every Markdown interview prompt, then synchronizes the default TinyURL prompt and shared first message
+to this agent before accepting requests. Session creation only requests provider credentials and does not update the
+persistent agent configuration.
 
-For multiple problems, add one mapping entry per packet:
-
-```dotenv
-ELEVENLABS_AGENT_IDS={"tinyurl-system-design":"agent_tinyurl","chat-system-design":"agent_chat"}
-```
-
-`ELEVENLABS_AGENT_ID` remains an optional backwards-compatible fallback for the default TinyURL packet.
-
-Backend startup synchronizes every registered packet's prompt, first message, and turn settings before accepting
-requests. Changing a packet and restarting the backend therefore updates its persistent ElevenLabs agent. Session
-creation itself only requests provider credentials and never updates agent configuration.
-Startup synchronization is always enabled so the backend cannot serve an interview with stale agent configuration.
-
-The standalone sync command remains available for deployments where you want to update agents without restarting the
-backend:
+Interview prompts live in `server/app/interviews/prompts/`. See the concise
+[authoring guide](server/app/interviews/README.md) or validate all prompts with:
 
 ```sh
-uv run python -m server.app.sync_elevenlabs_agents
+pnpm interview:validate
 ```
-
-Pass one or more packet IDs to sync only those packets:
-
-```sh
-uv run python -m server.app.sync_elevenlabs_agents tinyurl-system-design
-```
-
-The shared hierarchical prompt renderer and problem definitions live in
-`server/app/interview_packets.py`. Each packet includes `turn_timeout_seconds` and `turn_eagerness`; the sync command
-and automatic startup sync write them to `conversation_config.turn.turn_timeout` and
-`conversation_config.turn.turn_eagerness`. These are
-ElevenLabs agent settings, not tool calls, so they do not require KFL SDK support.
-
-To add another problem:
-
-1. Define its `SystemDesignProblem` and `InterviewPacket` and register the packet in `INTERVIEW_PACKETS`.
-2. Create a dedicated ElevenLabs agent for it.
-3. Add the packet-to-agent mapping to `ELEVENLABS_AGENT_IDS`.
-4. Restart the backend, or run the standalone sync command.
 
 The application handles call disconnection. The prompt intentionally does not reference ElevenLabs `end_call` because
 that system tool is not currently exposed by the KFL SDK integration.
 
-The installed KFL Elements integration also does not yet forward ElevenLabs `conversation_initiation_client_data`.
-When that support is available, candidate-visible details can move to per-conversation dynamic variables. Keep private
-solution references on the dedicated agent so they are not exposed in browser traffic. If the packet catalog grows large
-enough that dedicated agents become impractical, use a server-side ElevenLabs relay or custom LLM path for private
-per-session context.
+Future interview selection will start a new conversation with the selected prompt applied once at initialization. The
+prompt will remain fixed during that conversation so multiple interviews can safely reuse the shared agent.

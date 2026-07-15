@@ -17,11 +17,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .interview_packets import (
-    DEFAULT_INTERVIEW_PACKET_ID,
-    InterviewPacket,
-    get_interview_packet,
-    list_interview_packets,
+from .interviews.interview_loader import (
+    DEFAULT_INTERVIEW_PROMPT_ID,
+    DEFAULT_TURN_EAGERNESS,
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+    LYRA_FIRST_MESSAGE,
+    InterviewPrompt,
+    get_interview_prompt,
+    load_interview_prompts,
 )
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -44,10 +47,6 @@ class Settings(BaseSettings):
     )
     elevenlabs_api_key: Optional[str] = Field(default=None, validation_alias="ELEVENLABS_API_KEY")
     elevenlabs_agent_id: Optional[str] = Field(default=None, validation_alias="ELEVENLABS_AGENT_ID")
-    elevenlabs_agent_ids: dict[str, str] = Field(
-        default_factory=dict,
-        validation_alias="ELEVENLABS_AGENT_IDS",
-    )
     elevenlabs_api_base_url: str = Field(
         default="https://api.elevenlabs.io",
         validation_alias="ELEVENLABS_API_BASE_URL",
@@ -103,12 +102,6 @@ class VoiceAgentDetails(BaseModel):
     signed_url: str
 
 
-class CreateSessionRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    packet_id: str = Field(default=DEFAULT_INTERVIEW_PACKET_ID, alias="packetId")
-
-
 class LiveSessionResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -124,12 +117,14 @@ def get_settings() -> Settings:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    prompts = load_interview_prompts()
+    default_prompt = get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID, prompts)
     settings = get_settings()
     async with httpx.AsyncClient(timeout=settings.provider_timeout_seconds) as client:
         app.state.provider_http_client = client
         try:
             try:
-                await sync_elevenlabs_agents(client, settings)
+                await sync_elevenlabs_agent(client, settings, default_prompt)
             except HTTPException as exc:
                 raise RuntimeError(f"ElevenLabs startup sync failed: {exc.detail}") from exc
             yield
@@ -169,17 +164,12 @@ async def health() -> HealthResponse:
     response_model=LiveSessionResponse,
     response_model_by_alias=True,
 )
-async def create_session(request: CreateSessionRequest | None = None) -> LiveSessionResponse:
+async def create_session() -> LiveSessionResponse:
     settings = get_settings()
     keyframe_api_key = require_setting(settings.keyframe_api_key, "KEYFRAME_API_KEY")
     elevenlabs_api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
+    elevenlabs_agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
     client = get_provider_http_client()
-    packet_id = request.packet_id if request else DEFAULT_INTERVIEW_PACKET_ID
-    try:
-        packet = get_interview_packet(packet_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    elevenlabs_agent_id = resolve_elevenlabs_agent_id(settings, packet)
 
     session_details, signed_url = await asyncio.gather(
         create_keyframe_session(client, keyframe_api_key, settings),
@@ -251,7 +241,7 @@ async def update_elevenlabs_agent(
     client: httpx.AsyncClient,
     api_key: str,
     agent_id: str,
-    packet: InterviewPacket,
+    prompt: InterviewPrompt,
     settings: Settings | None = None,
 ) -> None:
     settings = settings or get_settings()
@@ -263,68 +253,42 @@ async def update_elevenlabs_agent(
             "Content-Type": "application/json",
             "xi-api-key": api_key,
         },
-        build_elevenlabs_agent_update_payload(packet),
+        build_elevenlabs_agent_update_payload(prompt),
         "ElevenLabs agent update failed",
     )
 
 
-async def sync_elevenlabs_agents(
+async def sync_elevenlabs_agent(
     client: httpx.AsyncClient,
     settings: Settings | None = None,
-    packets: tuple[InterviewPacket, ...] | None = None,
-) -> tuple[tuple[InterviewPacket, str], ...]:
+    prompt: InterviewPrompt | None = None,
+) -> InterviewPrompt:
     settings = settings or get_settings()
     api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
-    selected_packets = packets or list_interview_packets()
-    synced_packets: list[tuple[InterviewPacket, str]] = []
-
-    for packet in selected_packets:
-        agent_id = resolve_elevenlabs_agent_id(settings, packet)
-        await update_elevenlabs_agent(client, api_key, agent_id, packet, settings)
-        synced_packets.append((packet, agent_id))
-        logger.info(
-            "Synced ElevenLabs agent %s for interview packet %s",
-            agent_id,
-            packet.packet_id,
-        )
-
-    return tuple(synced_packets)
+    agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
+    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
+    await update_elevenlabs_agent(client, api_key, agent_id, selected_prompt, settings)
+    logger.info("Synced ElevenLabs agent %s with interview prompt %s", agent_id, selected_prompt.prompt_id)
+    return selected_prompt
 
 
-def build_elevenlabs_agent_update_payload(packet: InterviewPacket | None = None) -> dict[str, Any]:
-    selected_packet = packet or get_interview_packet(DEFAULT_INTERVIEW_PACKET_ID)
+def build_elevenlabs_agent_update_payload(prompt: InterviewPrompt | None = None) -> dict[str, Any]:
+    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
     return {
         "conversation_config": {
             "agent": {
-                "first_message": selected_packet.first_message,
+                "first_message": LYRA_FIRST_MESSAGE,
                 "disable_first_message_interruptions": True,
                 "prompt": {
-                    "prompt": selected_packet.prompt,
+                    "prompt": selected_prompt.prompt,
                 },
             },
             "turn": {
-                "turn_timeout": selected_packet.turn_timeout_seconds,
-                "turn_eagerness": selected_packet.turn_eagerness,
+                "turn_timeout": DEFAULT_TURN_TIMEOUT_SECONDS,
+                "turn_eagerness": DEFAULT_TURN_EAGERNESS,
             },
         }
     }
-
-
-def resolve_elevenlabs_agent_id(settings: Settings, packet: InterviewPacket) -> str:
-    packet_agent_id = settings.elevenlabs_agent_ids.get(packet.packet_id)
-    if packet_agent_id:
-        return packet_agent_id
-
-    if packet.packet_id == DEFAULT_INTERVIEW_PACKET_ID and settings.elevenlabs_agent_id:
-        return settings.elevenlabs_agent_id
-
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            f"Missing ElevenLabs agent ID for interview packet '{packet.packet_id}'. "
-            "Add it to ELEVENLABS_AGENT_IDS in .env and restart pnpm dev."
-        ),
-    )
 
 
 async def provider_json(

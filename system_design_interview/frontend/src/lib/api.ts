@@ -19,11 +19,10 @@ export type LiveSessionResponse = {
   conversationId?: string;
 };
 
-export async function createLiveSession(packetId?: string): Promise<LiveSessionResponse> {
+export async function createLiveSession(): Promise<LiveSessionResponse> {
   const response = await fetch(`${API_BASE_URL}/api/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(packetId ? { packetId } : {})
+    headers: { "Content-Type": "application/json" }
   });
 
   const payload = await parseResponse(response);
