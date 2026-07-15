@@ -92,6 +92,7 @@ export interface SystemDesignCanvasProps {
   initialState?: CanvasState;
   className?: string;
   onCanvasChange?: (state: CanvasState) => void;
+  onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
 }
 
@@ -129,6 +130,7 @@ export function SystemDesignCanvas({
   initialState,
   className = "",
   onCanvasChange,
+  onCanvasDirtyChange,
   onCanvasTextChange
 }: SystemDesignCanvasProps) {
   const {
@@ -136,10 +138,12 @@ export function SystemDesignCanvas({
     apply,
     applyEphemeral,
     commitSnapshot,
+    markDirty,
     undo,
     redo,
     canUndo,
-    canRedo
+    canRedo,
+    isDirty
   } = useCanvasHistory(initialState);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [connectionCardinality, setConnectionCardinality] =
@@ -163,6 +167,10 @@ export function SystemDesignCanvas({
   useEffect(() => {
     onCanvasChange?.(state);
   }, [onCanvasChange, state]);
+
+  useEffect(() => {
+    onCanvasDirtyChange?.(isDirty);
+  }, [isDirty, onCanvasDirtyChange]);
 
   useEffect(() => {
     latestCanvasTextStateRef.current = state;
@@ -390,15 +398,16 @@ export function SystemDesignCanvas({
 
   const handleLabelChange = useCallback(
     (id: string, label: string) => {
+      markDirty();
       applyEphemeral({ type: "update-element", id, patch: { label } });
-    },
-    [applyEphemeral]
+    }, [applyEphemeral, markDirty]
   );
 
   const handleFieldTextChange = useCallback(
     (tableId: string, fieldId: string, text: string) => {
       const table = stateRef.current.elements[tableId];
       if (!table || table.kind !== "table") return;
+      markDirty();
       applyEphemeral({
         type: "update-element",
         id: tableId,
@@ -409,7 +418,7 @@ export function SystemDesignCanvas({
         }
       });
     },
-    [applyEphemeral]
+    [applyEphemeral, markDirty]
   );
 
   const handleToggleFieldKey = useCallback(
