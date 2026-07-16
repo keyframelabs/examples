@@ -31,7 +31,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode
 } from "react";
 
 import {
@@ -94,6 +95,7 @@ export interface SystemDesignCanvasProps {
   onCanvasChange?: (state: CanvasState) => void;
   onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
+  toolbarEnd?: ReactNode;
 }
 
 const NODE_TYPES = { system: SystemDesignNode };
@@ -131,7 +133,8 @@ export function SystemDesignCanvas({
   className = "",
   onCanvasChange,
   onCanvasDirtyChange,
-  onCanvasTextChange
+  onCanvasTextChange,
+  toolbarEnd
 }: SystemDesignCanvasProps) {
   const {
     state,
@@ -619,6 +622,7 @@ export function SystemDesignCanvas({
         onCardinalityChange={setConnectionCardinality}
         onUndo={undo}
         onRedo={redo}
+        toolbarEnd={toolbarEnd}
       />
 
       <ReactFlow<SystemFlowNode, SystemFlowEdge>
@@ -701,7 +705,8 @@ function CanvasToolbar({
   onToolChange,
   onCardinalityChange,
   onUndo,
-  onRedo
+  onRedo,
+  toolbarEnd
 }: {
   tool: CanvasTool;
   canUndo: boolean;
@@ -711,6 +716,7 @@ function CanvasToolbar({
   onCardinalityChange: (cardinality: CanvasConnectionCardinality) => void;
   onUndo: () => void;
   onRedo: () => void;
+  toolbarEnd?: ReactNode;
 }) {
   return (
     <TooltipProvider delayDuration={250}>
@@ -755,6 +761,12 @@ function CanvasToolbar({
           onClick={onRedo}
           icon={<Redo2 size={18} />}
         />
+        {toolbarEnd ? (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-7" />
+            {toolbarEnd}
+          </>
+        ) : null}
       </Card>
 
       {tool === "connector" ? (

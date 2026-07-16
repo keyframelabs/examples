@@ -62,12 +62,13 @@ export function App() {
           className="h-full"
           onCanvasDirtyChange={setHasCanvasEdits}
           onCanvasTextChange={handleCanvasTextChange}
+          toolbarEnd={
+            canvasSyncStatus.isReady ? (
+              <CanvasSyncIndicator status={canvasSyncStatus} />
+            ) : null
+          }
         />
       </div>
-
-      {interviewStage === "canvas" ? (
-        <CanvasSyncIndicator status={canvasSyncStatus} />
-      ) : null}
 
       <FloatingAvatarWindow
         canvasText={canvasText}
