@@ -92,6 +92,7 @@ interface CardinalityMenuState {
 export interface SystemDesignCanvasProps {
   initialState?: CanvasState;
   className?: string;
+  isInteractive?: boolean;
   onCanvasChange?: (state: CanvasState) => void;
   onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
@@ -131,6 +132,7 @@ const cardinalityItems: Array<{
 export function SystemDesignCanvas({
   initialState,
   className = "",
+  isInteractive = true,
   onCanvasChange,
   onCanvasDirtyChange,
   onCanvasTextChange,
@@ -533,6 +535,8 @@ export function SystemDesignCanvas({
   );
 
   useEffect(() => {
+    if (!isInteractive) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
@@ -568,7 +572,7 @@ export function SystemDesignCanvas({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [apply, redo, undo]);
+  }, [apply, isInteractive, redo, undo]);
 
   const flowElements = useMemo(
     () =>
@@ -660,7 +664,8 @@ export function SystemDesignCanvas({
         zoomActivationKeyCode={["Meta", "Control"]}
         zoomOnDoubleClick={false}
         connectOnClick
-        deleteKeyCode={["Backspace", "Delete"]}
+        deleteKeyCode={isInteractive ? ["Backspace", "Delete"] : null}
+        disableKeyboardA11y={!isInteractive}
         multiSelectionKeyCode={["Meta", "Control"]}
         selectionKeyCode="Shift"
         attributionPosition="bottom-right"

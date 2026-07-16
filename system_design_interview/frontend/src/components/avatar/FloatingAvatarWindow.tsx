@@ -240,7 +240,7 @@ export function FloatingAvatarWindow({
         onError: (error) => {
           connectError = error.message;
           logEvent(`PersonaView error: ${error.message}`);
-          setAvatarError(`Lyra error: ${error.message}`);
+          showAvatarError(`Lyra error: ${error.message}`);
         }
       });
       const contextSync = createCanvasContextSync({
@@ -287,7 +287,7 @@ export function FloatingAvatarWindow({
           cleanupError
         );
       }
-      setAvatarError(formatAvatarError(error));
+      showAvatarError(formatAvatarError(error));
       setIsConnected(false);
       setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     } finally {
@@ -308,7 +308,7 @@ export function FloatingAvatarWindow({
       if (previousStream !== stream) stopMediaStream(previousStream);
     } catch (error) {
       setCameraStatus("unavailable");
-      setCameraError(userCameraErrorMessage(error));
+      showCameraError(userCameraErrorMessage(error));
     }
   }
 
@@ -332,7 +332,7 @@ export function FloatingAvatarWindow({
     try {
       await cleanupRuntime();
     } catch (error) {
-      setAvatarError(
+      showAvatarError(
         `Could not cleanly disconnect Lyra: ${formatAvatarError(error)}`
       );
     }
@@ -388,10 +388,20 @@ export function FloatingAvatarWindow({
   }
 
   function handleUnexpectedDisconnect(message: string) {
-    setAvatarError(message);
+    showAvatarError(message);
     void cleanupRuntime().catch((error) => {
-      setAvatarError(`${message} ${formatAvatarError(error)}`);
+      showAvatarError(`${message} ${formatAvatarError(error)}`);
     });
+  }
+
+  function showAvatarError(message: string) {
+    setAvatarError(message);
+    setMinimized(false);
+  }
+
+  function showCameraError(message: string) {
+    setCameraError(message);
+    setMinimized(false);
   }
 
   function logEvent(message: string) {
@@ -676,6 +686,7 @@ export function FloatingAvatarWindow({
           ) : null}
 
           <Card
+            key="interview-media-card"
             ref={panelRef}
             style={
               !intro
