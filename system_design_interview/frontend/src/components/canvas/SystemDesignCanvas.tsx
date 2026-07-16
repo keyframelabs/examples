@@ -31,7 +31,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode
 } from "react";
 
 import {
@@ -91,9 +92,11 @@ interface CardinalityMenuState {
 export interface SystemDesignCanvasProps {
   initialState?: CanvasState;
   className?: string;
+  isInteractive?: boolean;
   onCanvasChange?: (state: CanvasState) => void;
   onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
+  toolbarEnd?: ReactNode;
 }
 
 const NODE_TYPES = { system: SystemDesignNode };
@@ -129,9 +132,11 @@ const cardinalityItems: Array<{
 export function SystemDesignCanvas({
   initialState,
   className = "",
+  isInteractive = true,
   onCanvasChange,
   onCanvasDirtyChange,
-  onCanvasTextChange
+  onCanvasTextChange,
+  toolbarEnd
 }: SystemDesignCanvasProps) {
   const {
     state,
@@ -530,6 +535,8 @@ export function SystemDesignCanvas({
   );
 
   useEffect(() => {
+    if (!isInteractive) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
@@ -565,7 +572,7 @@ export function SystemDesignCanvas({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [apply, redo, undo]);
+  }, [apply, isInteractive, redo, undo]);
 
   const flowElements = useMemo(
     () =>
@@ -619,6 +626,7 @@ export function SystemDesignCanvas({
         onCardinalityChange={setConnectionCardinality}
         onUndo={undo}
         onRedo={redo}
+        toolbarEnd={toolbarEnd}
       />
 
       <ReactFlow<SystemFlowNode, SystemFlowEdge>
@@ -656,7 +664,8 @@ export function SystemDesignCanvas({
         zoomActivationKeyCode={["Meta", "Control"]}
         zoomOnDoubleClick={false}
         connectOnClick
-        deleteKeyCode={["Backspace", "Delete"]}
+        deleteKeyCode={isInteractive ? ["Backspace", "Delete"] : null}
+        disableKeyboardA11y={!isInteractive}
         multiSelectionKeyCode={["Meta", "Control"]}
         selectionKeyCode="Shift"
         attributionPosition="bottom-right"
@@ -670,7 +679,7 @@ export function SystemDesignCanvas({
         <Controls
           position="bottom-left"
           showInteractive={false}
-          className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-toolbar backdrop-blur-sm"
+          className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
         />
       </ReactFlow>
 
@@ -701,7 +710,8 @@ function CanvasToolbar({
   onToolChange,
   onCardinalityChange,
   onUndo,
-  onRedo
+  onRedo,
+  toolbarEnd
 }: {
   tool: CanvasTool;
   canUndo: boolean;
@@ -711,6 +721,7 @@ function CanvasToolbar({
   onCardinalityChange: (cardinality: CanvasConnectionCardinality) => void;
   onUndo: () => void;
   onRedo: () => void;
+  toolbarEnd?: ReactNode;
 }) {
   return (
     <TooltipProvider delayDuration={250}>
@@ -755,6 +766,12 @@ function CanvasToolbar({
           onClick={onRedo}
           icon={<Redo2 size={18} />}
         />
+        {toolbarEnd ? (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-7" />
+            {toolbarEnd}
+          </>
+        ) : null}
       </Card>
 
       {tool === "connector" ? (

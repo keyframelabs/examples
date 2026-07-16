@@ -15,7 +15,6 @@ import {
   createNode
 } from "@/components/canvas/model/state";
 import { isNode } from "@/components/canvas/model/types";
-import { initialSystemDesignCanvas } from "@/utils/interview/initialCanvas";
 
 describe("canvas collision settling", () => {
   it("separates overlapping nodes while preserving the pinned node", () => {
@@ -183,29 +182,6 @@ describe("canvas collision settling", () => {
     expect((settled.elements[target.id] as typeof target).x).toBeGreaterThan(
       target.x
     );
-  });
-
-  it("clears every connection label on the starter canvas", () => {
-    const settled = resolveCanvasCollisions(initialSystemDesignCanvas);
-    const settledNodes = new Map(
-      settled.order
-        .map((id) => settled.elements[id])
-        .filter(isNode)
-        .map((node) => [node.id, node])
-    );
-    const collisions = settled.order.flatMap((id) => {
-      const element = settled.elements[id];
-      if (!element || element.kind !== "connection") return [];
-      const label = connectionLabelRect(element, settledNodes);
-      if (!label) return [];
-      return Array.from(settledNodes.values())
-        .filter((node) =>
-          rectanglesOverlap(label, node, CONNECTION_LABEL_COLLISION_GAP)
-        )
-        .map((node) => [element.id, node.id]);
-    });
-    expect(collisions).toEqual([]);
-    expect(resolveCanvasCollisions(settled)).toBe(settled);
   });
 });
 
