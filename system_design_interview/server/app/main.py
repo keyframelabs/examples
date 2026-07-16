@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional, TypeVar
+from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -15,6 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .interviews.interview_loader import (
+    DEFAULT_INTERVIEW_PROMPT_ID,
+    DEFAULT_TURN_EAGERNESS,
+    DEFAULT_TURN_TIMEOUT_SECONDS,
+    LYRA_FIRST_MESSAGE,
+    InterviewPrompt,
+    get_interview_prompt,
+    load_interview_prompts,
+)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env",)
@@ -89,7 +100,6 @@ class VoiceAgentDetails(BaseModel):
     provider_type: Literal["elevenlabs"] = Field(default="elevenlabs", alias="type")
     agent_id: str
     signed_url: str
-    dynamic_variables: dict[str, str]
 
 
 class LiveSessionResponse(BaseModel):
@@ -107,12 +117,20 @@ def get_settings() -> Settings:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    prompts = load_interview_prompts()
+    default_prompt = get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID, prompts)
     settings = get_settings()
     async with httpx.AsyncClient(timeout=settings.provider_timeout_seconds) as client:
         app.state.provider_http_client = client
-        yield
-    if hasattr(app.state, "provider_http_client"):
-        delattr(app.state, "provider_http_client")
+        try:
+            try:
+                await sync_elevenlabs_agent(client, settings, default_prompt)
+            except HTTPException as exc:
+                raise RuntimeError(f"ElevenLabs startup sync failed: {exc.detail}") from exc
+            yield
+        finally:
+            if hasattr(app.state, "provider_http_client"):
+                delattr(app.state, "provider_http_client")
 
 
 app = FastAPI(title="KFL System Design Interview API", lifespan=lifespan)
@@ -163,11 +181,6 @@ async def create_session() -> LiveSessionResponse:
         voice_agent_details=VoiceAgentDetails(
             agent_id=elevenlabs_agent_id,
             signed_url=signed_url.signed_url,
-            dynamic_variables={
-                "interviewer_name": "Lyra",
-                "interview_type": "system design",
-                "canvas_context_format": "Serialized canvas architecture text",
-            },
         ),
         conversation_id=signed_url.conversation_id,
     )
@@ -222,6 +235,60 @@ async def get_elevenlabs_signed_url(
     )
 
     return validate_provider_model(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
+
+
+async def update_elevenlabs_agent(
+    client: httpx.AsyncClient,
+    api_key: str,
+    agent_id: str,
+    prompt: InterviewPrompt,
+    settings: Settings | None = None,
+) -> None:
+    settings = settings or get_settings()
+    await provider_json(
+        client,
+        "PATCH",
+        f"{settings.elevenlabs_api_base_url}/v1/convai/agents/{quote(agent_id, safe='')}",
+        {
+            "Content-Type": "application/json",
+            "xi-api-key": api_key,
+        },
+        build_elevenlabs_agent_update_payload(prompt),
+        "ElevenLabs agent update failed",
+    )
+
+
+async def sync_elevenlabs_agent(
+    client: httpx.AsyncClient,
+    settings: Settings | None = None,
+    prompt: InterviewPrompt | None = None,
+) -> InterviewPrompt:
+    settings = settings or get_settings()
+    api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
+    agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
+    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
+    await update_elevenlabs_agent(client, api_key, agent_id, selected_prompt, settings)
+    logger.info("Synced ElevenLabs agent %s with interview prompt %s", agent_id, selected_prompt.prompt_id)
+    return selected_prompt
+
+
+def build_elevenlabs_agent_update_payload(prompt: InterviewPrompt | None = None) -> dict[str, Any]:
+    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
+    return {
+        "conversation_config": {
+            "agent": {
+                "first_message": LYRA_FIRST_MESSAGE,
+                "disable_first_message_interruptions": True,
+                "prompt": {
+                    "prompt": selected_prompt.prompt,
+                },
+            },
+            "turn": {
+                "turn_timeout": DEFAULT_TURN_TIMEOUT_SECONDS,
+                "turn_eagerness": DEFAULT_TURN_EAGERNESS,
+            },
+        }
+    }
 
 
 async def provider_json(

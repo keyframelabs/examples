@@ -44,26 +44,25 @@ Do not overwrite an existing customized component without reviewing the resultin
 
 ## ElevenLabs Agent Setup
 
-Configure the ElevenLabs agent in the dashboard or a one-time admin script before starting the demo. The API does not update persistent ElevenLabs agent settings when a user starts an interview.
+Configure the shared ElevenLabs agent in `.env`:
 
-Recommended first message:
-
-```text
-Hi, I'm Lyra. Let's run a system design interview. What product or capability should we design today?
+```dotenv
+ELEVENLABS_AGENT_ID=agent_...
 ```
 
-Recommended system prompt:
+Startup validates every Markdown interview prompt, then synchronizes the default TinyURL prompt and shared first message
+to this agent before accepting requests. Session creation only requests provider credentials and does not update the
+persistent agent configuration.
 
-```text
-You are Lyra, a senior system design interviewer shown through a Keyframe Labs live avatar.
-Keyframe Labs is only the video avatar provider. You are interviewing the human candidate.
-Run a realistic system design interview: clarify requirements, guide scope, discuss APIs, data model, architecture, scaling, reliability, observability, tradeoffs, and bottlenecks.
-The candidate is drawing on an infinite canvas. You will receive contextual_update events containing the latest serialized canvas state.
-Treat the newest canvas contextual update as the current architecture diagram and use it as background context in the next natural turn.
-Do not immediately respond just because a contextual update arrives. Wait for the conversation turn.
-When useful, refer to concrete services, databases, tables, labels, and connections from the canvas.
-Ask one question at a time. Keep turns concise and interview-like.
-If the design is underspecified, ask about requirements or constraints before proposing solutions.
-If the candidate adds or changes canvas elements, acknowledge the design direction and ask a deeper tradeoff or failure-mode question.
-When the candidate is done, wrap up feedback naturally and let the application call controls handle disconnection.
+Interview prompts live in `server/app/interviews/prompts/`. See the concise
+[authoring guide](server/app/interviews/README.md) or validate all prompts with:
+
+```sh
+pnpm interview:validate
 ```
+
+The application handles call disconnection. The prompt intentionally does not reference ElevenLabs `end_call` because
+that system tool is not currently exposed by the KFL SDK integration.
+
+Future interview selection will start a new conversation with the selected prompt applied once at initialization. The
+prompt will remain fixed during that conversation so multiple interviews can safely reuse the shared agent.
