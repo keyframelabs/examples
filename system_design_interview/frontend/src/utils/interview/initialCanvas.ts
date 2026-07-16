@@ -84,13 +84,13 @@ export const initialSystemDesignCanvas: CanvasState = {
       x: 1080,
       y: 200,
       width: 250,
-      height: 154,
+      height: 159,
       label: "events",
       alias: "events",
       databaseId: "db",
       fields: [
-        { id: "field_1", text: "id pk" },
-        { id: "field_2", text: "actor_id fk" },
+        { id: "field_1", text: "id", primaryKey: true },
+        { id: "field_2", text: "actor_id", foreignKey: true },
         { id: "field_3", text: "created_at" }
       ]
     },
@@ -100,12 +100,12 @@ export const initialSystemDesignCanvas: CanvasState = {
       x: 1080,
       y: 20,
       width: 250,
-      height: 154,
+      height: 159,
       label: "profiles",
       alias: "profiles",
       databaseId: "db",
       fields: [
-        { id: "field_4", text: "id pk" },
+        { id: "field_4", text: "id", primaryKey: true },
         { id: "field_5", text: "email" },
         { id: "field_6", text: "status" }
       ]

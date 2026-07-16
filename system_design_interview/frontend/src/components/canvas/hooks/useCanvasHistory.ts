@@ -10,13 +10,15 @@ interface CanvasHistory {
   past: CanvasState[];
   present: CanvasState;
   future: CanvasState[];
+  isDirty: boolean;
 }
 
 export function useCanvasHistory(initialState?: CanvasState) {
   const [history, setHistory] = useState<CanvasHistory>({
     past: [],
     present: initialState ?? createEmptyCanvasState(),
-    future: []
+    future: [],
+    isDirty: false
   });
 
   const apply = useCallback((action: CanvasAction) => {
@@ -26,7 +28,8 @@ export function useCanvasHistory(initialState?: CanvasState) {
       return {
         past: [...current.past, current.present],
         present: next,
-        future: []
+        future: [],
+        isDirty: current.isDirty || isMeaningfulCanvasAction(action)
       };
     });
   }, []);
@@ -46,9 +49,16 @@ export function useCanvasHistory(initialState?: CanvasState) {
       return {
         past: [...current.past, snapshot],
         present: current.present,
-        future: []
+        future: [],
+        isDirty: true
       };
     });
+  }, []);
+
+  const markDirty = useCallback(() => {
+    setHistory((current) =>
+      current.isDirty ? current : { ...current, isDirty: true }
+    );
   }, []);
 
   const replacePresent = useCallback((state: CanvasState) => {
@@ -62,7 +72,8 @@ export function useCanvasHistory(initialState?: CanvasState) {
       return {
         past: current.past.slice(0, -1),
         present: previous,
-        future: [current.present, ...current.future]
+        future: [current.present, ...current.future],
+        isDirty: current.isDirty
       };
     });
   }, []);
@@ -74,7 +85,8 @@ export function useCanvasHistory(initialState?: CanvasState) {
       return {
         past: [...current.past, current.present],
         present: next,
-        future: current.future.slice(1)
+        future: current.future.slice(1),
+        isDirty: current.isDirty
       };
     });
   }, []);
@@ -84,10 +96,20 @@ export function useCanvasHistory(initialState?: CanvasState) {
     apply,
     applyEphemeral,
     commitSnapshot,
+    markDirty,
     replacePresent,
     undo,
     redo,
     canUndo: history.past.length > 0,
-    canRedo: history.future.length > 0
+    canRedo: history.future.length > 0,
+    isDirty: history.isDirty
   };
+}
+
+export function isMeaningfulCanvasAction(action: CanvasAction): boolean {
+  return !(
+    action.type === "select" ||
+    action.type === "clear-selection" ||
+    action.type === "change-selection"
+  );
 }
