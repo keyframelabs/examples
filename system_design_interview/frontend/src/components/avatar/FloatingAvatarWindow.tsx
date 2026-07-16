@@ -669,7 +669,7 @@ export function FloatingAvatarWindow({
               <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                 Ace your next system design interview
               </h1>
-              <p className="mx-auto mt-3 max-w-2xl font-body text-sm leading-6 text-muted-foreground sm:text-base">
+              <p className="mx-auto mt-3 max-w-2xl font-sans text-sm leading-6 text-muted-foreground sm:text-base">
                 Practice designing tinyurl with Lyra
               </p>
             </div>
@@ -686,9 +686,9 @@ export function FloatingAvatarWindow({
                 : undefined
             }
             className={cn(
-              "group relative flex flex-col overflow-hidden bg-card text-card-foreground shadow-float",
+              "group relative flex flex-col overflow-hidden bg-card text-card-foreground shadow-xl",
               intro
-                ? "mx-auto w-full max-w-[814px] translate-y-0 rounded-2xl border-border/80 sm:translate-y-8"
+                ? "mx-auto w-full max-w-[814px] translate-y-0 rounded-xl border-border/80 sm:translate-y-8"
                 : minimized
                   ? "max-w-[calc(100vw-24px)] rounded-lg"
                   : "w-[min(404px,calc(100vw-24px))] max-w-[min(404px,calc(100vw-24px))] max-h-[calc(100vh-68px)] rounded-lg"
