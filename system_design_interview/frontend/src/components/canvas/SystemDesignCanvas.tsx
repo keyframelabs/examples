@@ -674,7 +674,7 @@ export function SystemDesignCanvas({
         <Controls
           position="bottom-left"
           showInteractive={false}
-          className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-toolbar backdrop-blur-sm"
+          className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
         />
       </ReactFlow>
 

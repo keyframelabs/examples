@@ -1,0 +1,103 @@
+:root {
+  --canvas-paper: hsl(210 40% 98%);
+  --canvas-ink: hsl(222 33% 15%);
+  --canvas-grid: hsl(215 20% 65%);
+  --canvas-grid-dot: hsl(215 20% 65% / 42%);
+  --canvas-connection: hsl(215 25% 37%);
+  --canvas-connection-selected: hsl(173 80% 26%);
+  --canvas-avatar-surface: hsl(210 11% 8%);
+  --canvas-node-actor: hsl(33 100% 96%);
+  --canvas-node-actor-foreground: hsl(17 88% 38%);
+  --canvas-node-service: hsl(210 40% 98%);
+  --canvas-node-service-foreground: hsl(215 25% 27%);
+  --canvas-node-database: hsl(183 100% 96%);
+  --canvas-node-database-foreground: hsl(173 80% 26%);
+  --canvas-node-table: hsl(55 92% 95%);
+  --canvas-node-table-header: hsl(48 96% 89%);
+  --canvas-node-table-foreground: hsl(33 82% 31%);
+  --canvas-node-text: hsl(215 16% 47%);
+}
+
+@theme inline {
+  --color-canvas-paper: var(--canvas-paper);
+  --color-canvas-ink: var(--canvas-ink);
+  --color-canvas-grid: var(--canvas-grid);
+  --color-canvas-connection: var(--canvas-connection);
+  --color-canvas-connection-selected: var(--canvas-connection-selected);
+  --color-canvas-avatar-surface: var(--canvas-avatar-surface);
+  --color-canvas-node-actor: var(--canvas-node-actor);
+  --color-canvas-node-actor-foreground: var(--canvas-node-actor-foreground);
+  --color-canvas-node-service: var(--canvas-node-service);
+  --color-canvas-node-service-foreground: var(
+    --canvas-node-service-foreground
+  );
+  --color-canvas-node-database: var(--canvas-node-database);
+  --color-canvas-node-database-foreground: var(
+    --canvas-node-database-foreground
+  );
+  --color-canvas-node-table: var(--canvas-node-table);
+  --color-canvas-node-table-header: var(--canvas-node-table-header);
+  --color-canvas-node-table-foreground: var(--canvas-node-table-foreground);
+  --color-canvas-node-text: var(--canvas-node-text);
+}
+
+.system-design-flow .react-flow__node-system {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.system-design-flow .system-design-handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent);
+  background: var(--card);
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+
+.system-design-flow .system-design-handle.connecting,
+.system-design-flow .system-design-handle.valid {
+  opacity: 1 !important;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.system-design-flow .system-design-resize-handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--card);
+  border-radius: 3px;
+}
+
+.system-design-flow .system-design-resize-line {
+  border-color: var(--primary);
+}
+
+.system-design-flow .react-flow__edge-path {
+  transition:
+    stroke 120ms ease,
+    stroke-width 120ms ease;
+}
+
+.system-design-flow .react-flow__controls-button {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+.system-design-flow .react-flow__controls-button:hover {
+  background: var(--accent);
+}
+
+.system-design-flow .react-flow__attribution {
+  right: 0.25rem;
+  bottom: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted-foreground);
+  padding: 0.125rem 0.35rem;
+}
