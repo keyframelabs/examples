@@ -11,11 +11,27 @@ from app.interviews.interview_loader import (
     load_interview_prompt,
     load_interview_prompts,
 )
-from app.main import build_elevenlabs_agent_update_payload
+from app.main import (
+    build_elevenlabs_agent_update_payload,
+    build_shared_elevenlabs_prompt,
+    public_interview_metadata,
+)
+
+DEFAULT_PUBLIC_METADATA = """summary: A focused system design interview.
+question_number: 99
+skill_level: Junior
+difficulty: Intermediate
+focus:
+  - Data model
+tags:
+  - databases"""
 
 
 def write_prompt(path: Path, metadata: str, body: str = "# Prompt\n\nInterview the candidate.\n") -> None:
-    path.write_text(f"---\n{metadata}\n---\n{body}", encoding="utf-8")
+    path.write_text(
+        f"---\n{metadata}\n{DEFAULT_PUBLIC_METADATA}\n---\n{body}",
+        encoding="utf-8",
+    )
 
 
 def test_tinyurl_prompt_loads_markdown_body_without_rewriting_it() -> None:
@@ -27,7 +43,10 @@ def test_tinyurl_prompt_loads_markdown_body_without_rewriting_it() -> None:
     prompt = load_interview_prompt(path)
 
     assert prompt.prompt_id == DEFAULT_INTERVIEW_PROMPT_ID
-    assert prompt.display_name == "TinyURL System Design"
+    assert prompt.display_name == "TinyURL"
+    assert prompt.skill_level == "Junior"
+    assert prompt.difficulty == "Intermediate"
+    assert "Caching" in prompt.focus
     assert prompt.prompt == expected_prompt
     assert "design the backend for TinyURL" in prompt.prompt
     assert "# Private interviewer reference" in prompt.prompt
@@ -43,6 +62,71 @@ def test_filename_does_not_determine_prompt_identity(tmp_path: Path) -> None:
 
     assert prompt.prompt_id == "explicit-prompt-id"
     assert prompt.display_name == "Explicit Prompt"
+
+
+def test_catalog_contains_all_packets_with_assigned_skill_levels() -> None:
+    prompts = load_interview_prompts()
+
+    assert set(prompts) == {
+        "pastebin-system-design",
+        "user-profile-api-system-design",
+        "file-upload-service-system-design",
+        "product-catalog-api-system-design",
+        "webhook-ingestion-system-design",
+        "tinyurl-system-design",
+        "google-calendar-system-design",
+        "hotel-booking-system-design",
+        "notification-service-system-design",
+        "api-rate-limiter-system-design",
+        "distributed-key-value-store",
+        "kafka-like-distributed-log",
+        "google-analytics-system-design",
+        "distributed-sql-database-system-design",
+        "collaborative-documents-system-design",
+    }
+    assert {prompt.prompt_id: prompt.skill_level for prompt in prompts.values()} == {
+        "pastebin-system-design": "Intern",
+        "user-profile-api-system-design": "Intern",
+        "file-upload-service-system-design": "Intern",
+        "product-catalog-api-system-design": "Intern",
+        "webhook-ingestion-system-design": "Intern",
+        "tinyurl-system-design": "Junior",
+        "google-calendar-system-design": "Junior",
+        "hotel-booking-system-design": "Junior",
+        "notification-service-system-design": "Junior",
+        "api-rate-limiter-system-design": "Junior",
+        "distributed-key-value-store": "Senior",
+        "kafka-like-distributed-log": "Senior",
+        "google-analytics-system-design": "Senior",
+        "distributed-sql-database-system-design": "Senior",
+        "collaborative-documents-system-design": "Senior",
+    }
+    assert {(prompt.skill_level, prompt.difficulty) for prompt in prompts.values()} == {
+        ("Intern", "Beginner"),
+        ("Junior", "Intermediate"),
+        ("Senior", "Advanced"),
+    }
+
+
+def test_public_metadata_is_an_explicit_allowlist() -> None:
+    prompt = get_interview_prompt()
+
+    payload = public_interview_metadata(prompt).model_dump(by_alias=True)
+
+    assert set(payload) == {
+        "packetId",
+        "title",
+        "summary",
+        "questionNumber",
+        "skillLevel",
+        "difficulty",
+        "focus",
+        "tags",
+    }
+    serialized = str(payload)
+    assert prompt.prompt not in serialized
+    assert str(prompt.source_path) not in serialized
+    assert "Private interviewer reference" not in serialized
 
 
 @pytest.mark.parametrize(
@@ -111,14 +195,28 @@ def test_unknown_prompt_lookup_is_clear() -> None:
 
 
 def test_elevenlabs_payload_uses_prompt_and_shared_interviewer_settings() -> None:
-    prompt = get_interview_prompt()
-    payload = build_elevenlabs_agent_update_payload(prompt)
+    prompts = load_interview_prompts()
+    payload = build_elevenlabs_agent_update_payload(prompts)
     agent = payload["conversation_config"]["agent"]
 
     assert agent["first_message"] == LYRA_FIRST_MESSAGE
     assert agent["disable_first_message_interruptions"] is True
-    assert agent["prompt"]["prompt"] == prompt.prompt
+    assert agent["dynamic_variables"] == {
+        "dynamic_variable_placeholders": {
+            "interview_packet_id": DEFAULT_INTERVIEW_PROMPT_ID,
+        }
+    }
+    shared_prompt = agent["prompt"]["prompt"]
+    assert "{{interview_packet_id}}" in shared_prompt
+    for prompt in prompts.values():
+        assert f'<interview_packet id="{prompt.prompt_id}">' in shared_prompt
+        assert prompt.prompt.strip() in shared_prompt
     assert payload["conversation_config"]["turn"] == {
         "turn_timeout": 15,
         "turn_eagerness": "normal",
     }
+
+
+def test_shared_elevenlabs_prompt_requires_at_least_one_packet() -> None:
+    with pytest.raises(ValueError, match="At least one interview prompt is required"):
+        build_shared_elevenlabs_prompt({})

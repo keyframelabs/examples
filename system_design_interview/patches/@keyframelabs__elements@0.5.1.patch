@@ -1,0 +1,60 @@
+diff --git a/dist/agents/elevenlabs.d.ts b/dist/agents/elevenlabs.d.ts
+index 2a9ef7b27dffb11e3fc27782f9abb71aa63035ff..e962a35c4630f5c1f544919f75f4d4405c36e2ff 100644
+--- a/dist/agents/elevenlabs.d.ts
++++ b/dist/agents/elevenlabs.d.ts
+@@ -6,6 +6,8 @@ export interface ElevenLabsConfig extends AgentConfig {
+     agentId: string;
+     /** Signed URL for authentication (alternative to API key) */
+     signedUrl?: string;
++    /** Runtime variables sent with ElevenLabs conversation initiation data */
++    dynamicVariables?: Record<string, string | number | boolean>;
+ }
+ /**
+  * ElevenLabs Conversational AI agent implementation.
+diff --git a/dist/index.js b/dist/index.js
+index 85f60acad0529a7ae6cbf5443b84b06832fbf1f5..096e77f7331629e04d003c5ab1af017e016d350f 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -178,6 +178,10 @@ class F extends v {
+     let t;
+     return e.signedUrl ? t = e.signedUrl : (t = `${B}?agent_id=${e.agentId}`, e.apiKey && (t += `&xi-api-key=${e.apiKey}`)), new Promise((i, n) => {
+       this.ws = new WebSocket(t), this.ws.onopen = () => {
++        e.dynamicVariables && this.ws?.send(JSON.stringify({
++          type: "conversation_initiation_client_data",
++          dynamic_variables: e.dynamicVariables
++        })),
+         this.setState("listening"), i();
+       }, this.ws.onerror = () => {
+         n(new Error("Failed to connect to ElevenLabs"));
+@@ -873,7 +877,8 @@ class Y {
+       await this.agent.connect({
+         ...t,
+         agentId: e.agent_id,
+-        signedUrl: e.signed_url
++        signedUrl: e.signed_url,
++        dynamicVariables: e.dynamic_variables
+       });
+     else if (e.type === "openai")
+       await this.agent.connect({
+@@ -1016,7 +1021,8 @@ class be {
+       await this.agent.connect({
+         ...t,
+         agentId: e.agent_id,
+-        signedUrl: e.signed_url
++        signedUrl: e.signed_url,
++        dynamicVariables: e.dynamic_variables
+       });
+     else if (e.type === "openai")
+       await this.agent.connect({
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 45261478e1946adae3eae8f08fe2f5ab0faeca1c..a2368ddd213f399538ed53ba171ae1a5c6f7f07c 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -7,6 +7,7 @@ export type VoiceAgentDetails = {
+     token?: string;
+     agent_id?: string;
+     signed_url?: string;
++    dynamic_variables?: Record<string, string | number | boolean>;
+ };
+ export type SessionDetails = {
+     server_url: string;

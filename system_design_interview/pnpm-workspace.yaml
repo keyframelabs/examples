@@ -2,3 +2,5 @@ packages:
   - "frontend"
 allowBuilds:
   esbuild: true
+patchedDependencies:
+  '@keyframelabs/elements@0.5.1': patches/@keyframelabs__elements@0.5.1.patch

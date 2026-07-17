@@ -50,9 +50,10 @@ Configure the shared ElevenLabs agent in `.env`:
 ELEVENLABS_AGENT_ID=agent_...
 ```
 
-Startup validates every Markdown interview prompt, then synchronizes the default TinyURL prompt and shared first message
-to this agent before accepting requests. Session creation only requests provider credentials and does not update the
-persistent agent configuration.
+Startup validates every Markdown interview prompt, then synchronizes one shared packet library and opening message to
+this agent before accepting requests. Session creation does not mutate the persistent agent configuration. Instead, it
+passes the selected public packet ID as the `interview_packet_id` dynamic variable when the ElevenLabs WebSocket starts.
+The shared agent follows only the matching packet, so all interviews use the same agent without branch configuration.
 
 Interview prompts live in `server/app/interviews/prompts/`. See the concise
 [authoring guide](server/app/interviews/README.md) or validate all prompts with:
@@ -64,5 +65,5 @@ pnpm interview:validate
 The application handles call disconnection. The prompt intentionally does not reference ElevenLabs `end_call` because
 that system tool is not currently exposed by the KFL SDK integration.
 
-Future interview selection will start a new conversation with the selected prompt applied once at initialization. The
-prompt will remain fixed during that conversation so multiple interviews can safely reuse the shared agent.
+Interview selection starts a new conversation with its packet ID fixed in the initiation data. Multiple interviews can
+safely reuse the shared agent without mutating shared configuration during session creation.

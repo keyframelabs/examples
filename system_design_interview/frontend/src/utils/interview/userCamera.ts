@@ -19,6 +19,22 @@ export function stopMediaStream(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+export function hasLiveVideoTrack(
+  stream: MediaStream | null
+): stream is MediaStream {
+  return stream?.getVideoTracks().some((track) => track.readyState === "live")
+    ?? false;
+}
+
+export function setMediaStreamVideoEnabled(
+  stream: MediaStream,
+  enabled: boolean
+): void {
+  stream.getVideoTracks().forEach((track) => {
+    track.enabled = enabled;
+  });
+}
+
 export function userCameraErrorMessage(error: unknown): string {
   const name = errorName(error);
 
@@ -40,6 +56,11 @@ export function userCameraErrorMessage(error: unknown): string {
         ? error.message
         : "The camera could not be started. You can continue without video.";
   }
+}
+
+export function isMissingUserCameraError(error: unknown): boolean {
+  const name = errorName(error);
+  return name === "NotFoundError" || name === "DevicesNotFoundError";
 }
 
 function browserMediaDevices(): MediaDevices | undefined {

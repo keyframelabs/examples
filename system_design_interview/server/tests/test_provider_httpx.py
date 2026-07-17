@@ -67,7 +67,44 @@ def test_cors_allows_localhost_dev_origin() -> None:
     assert localhost_response.headers["access-control-allow-origin"] == "http://localhost:5174"
 
 
-def test_backend_startup_validates_all_prompts_and_synchronizes_only_default(
+def test_interview_catalog_exposes_only_public_metadata() -> None:
+    with TestClient(main.app) as client:
+        response = client.get("/api/interviews")
+
+    assert response.status_code == 200
+    interviews = response.json()["interviews"]
+    assert len(interviews) == 15
+    assert [interview["skillLevel"] for interview in interviews] == [
+        *(["Intern"] * 5),
+        *(["Junior"] * 5),
+        *(["Senior"] * 5),
+    ]
+    assert set(interviews[0]) == {
+        "packetId",
+        "title",
+        "summary",
+        "questionNumber",
+        "skillLevel",
+        "difficulty",
+        "focus",
+        "tags",
+    }
+    serialized = response.text
+    assert "Private interviewer reference" not in serialized
+    assert "source_path" not in serialized
+    assert "branch_id" not in serialized
+    assert "Never reveal or supply the solution" not in serialized
+
+
+def test_create_session_rejects_unknown_packet_before_provider_calls() -> None:
+    with TestClient(main.app) as client:
+        response = client.post("/api/session", json={"packetId": "not-a-packet"})
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "Unknown interview packet: not-a-packet"}
+
+
+def test_backend_startup_validates_and_synchronizes_shared_packet_library(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
@@ -78,12 +115,24 @@ def test_backend_startup_validates_all_prompts_and_synchronizes_only_default(
     default_prompt = InterviewPrompt(
         prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
         display_name="TinyURL",
+        summary="Design TinyURL.",
+        question_number=1,
+        skill_level="Junior",
+        difficulty="Intermediate",
+        focus=("URLs",),
+        tags=("backend",),
         prompt="# TinyURL prompt\n",
         source_path=Path("tinyurl.md"),
     )
     future_prompt = InterviewPrompt(
         prompt_id="future-interview",
         display_name="Future",
+        summary="Design a future system.",
+        question_number=2,
+        skill_level="Senior",
+        difficulty="Advanced",
+        focus=("Scale",),
+        tags=("distributed-systems",),
         prompt="# Future prompt\n",
         source_path=Path("future.md"),
     )
@@ -131,7 +180,12 @@ def test_backend_startup_validates_all_prompts_and_synchronizes_only_default(
                     "Content-Type": "application/json",
                     "xi-api-key": "eleven-key",
                 },
-                "json": main.build_elevenlabs_agent_update_payload(default_prompt),
+                "json": main.build_elevenlabs_agent_update_payload(
+                    {
+                        default_prompt.prompt_id: default_prompt,
+                        future_prompt.prompt_id: future_prompt,
+                    }
+                ),
             },
         }
     ]
@@ -238,6 +292,9 @@ def test_create_session_endpoint_uses_shared_elevenlabs_agent(
             "type": "elevenlabs",
             "agent_id": "agent_123",
             "signed_url": "wss://elevenlabs.example/conversation",
+            "dynamic_variables": {
+                "interview_packet_id": main.DEFAULT_INTERVIEW_PROMPT_ID,
+            },
         },
         "conversationId": "conversation_123",
     }
@@ -276,6 +333,62 @@ def test_create_session_endpoint_uses_shared_elevenlabs_agent(
     assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
 
 
+def test_create_session_selects_packet_without_branch_or_agent_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
+    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
+    main.get_settings.cache_clear()
+
+    class RecordingLifecycleClient:
+        requests: list[dict[str, Any]] = []
+
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> "RecordingLifecycleClient":
+            return self
+
+        async def __aexit__(self, *_args: Any) -> None:
+            return None
+
+        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
+            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
+            if method == "PATCH":
+                raise AssertionError("session creation must not update persistent ElevenLabs agent configuration")
+            if "keyframelabs" in url:
+                return StubResponse(
+                    body={
+                        "server_url": "wss://keyframe.example/live",
+                        "participant_token": "participant-token",
+                        "agent_identity": "avatar-agent",
+                    }
+                )
+            return StubResponse(body={"signed_url": "wss://elevenlabs.example/conversation"})
+
+    monkeypatch.setattr(main.httpx, "AsyncClient", RecordingLifecycleClient)
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/session",
+            json={"packetId": "google-calendar-system-design"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["voiceAgentDetails"]["dynamic_variables"] == {
+        "interview_packet_id": "google-calendar-system-design",
+    }
+    elevenlabs_request = next(
+        request for request in RecordingLifecycleClient.requests if "elevenlabs" in request["url"]
+    )
+    assert elevenlabs_request["kwargs"]["params"] == {
+        "agent_id": "agent_123",
+        "include_conversation_id": "true",
+    }
+    assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
+
+
 def test_create_session_reports_missing_shared_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
@@ -296,14 +409,14 @@ def test_deliberate_agent_update_includes_prompt_and_shared_settings() -> None:
             requests.append({"method": method, "url": url, "kwargs": kwargs})
             return StubResponse(body={})
 
-    prompt = main.get_interview_prompt()
+    prompts = main.load_interview_prompts()
     settings = main.Settings(_env_file=None)
     asyncio.run(
         main.update_elevenlabs_agent(
             RecordingClient(),
             "eleven-key",
             "agent_123",
-            prompt,
+            prompts,
             settings,
         )
     )
@@ -317,7 +430,7 @@ def test_deliberate_agent_update_includes_prompt_and_shared_settings() -> None:
                     "Content-Type": "application/json",
                     "xi-api-key": "eleven-key",
                 },
-                "json": main.build_elevenlabs_agent_update_payload(prompt),
+                "json": main.build_elevenlabs_agent_update_payload(prompts),
             },
         }
     ]

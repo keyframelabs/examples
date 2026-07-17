@@ -1,6 +1,21 @@
 ---
 id: tinyurl-system-design
-display_name: TinyURL System Design
+display_name: TinyURL
+summary: Design a globally scalable URL shortener with reliable redirects and asynchronous analytics.
+question_number: 1
+skill_level: Junior
+difficulty: Intermediate
+focus:
+  - URL mappings
+  - Short-code generation
+  - Caching
+  - Analytics
+  - Partitioning
+tags:
+  - backend
+  - databases
+  - caching
+  - scalability
 ---
 # Personality
 

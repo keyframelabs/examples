@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -34,6 +34,7 @@ DEFAULT_CLIENT_ORIGINS = [
 ]
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 35.0
 SERVICE_NAME = "kfl-system-design-interview"
+SKILL_LEVEL_ORDER = {"Intern": 0, "Junior": 1, "Senior": 2}
 
 logger = logging.getLogger(__name__)
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -100,6 +101,7 @@ class VoiceAgentDetails(BaseModel):
     provider_type: Literal["elevenlabs"] = Field(default="elevenlabs", alias="type")
     agent_id: str
     signed_url: str
+    dynamic_variables: dict[str, str]
 
 
 class LiveSessionResponse(BaseModel):
@@ -110,6 +112,29 @@ class LiveSessionResponse(BaseModel):
     conversation_id: Optional[str] = Field(default=None, alias="conversationId")
 
 
+class InterviewCatalogItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    packet_id: str = Field(alias="packetId")
+    title: str
+    summary: str
+    question_number: int = Field(alias="questionNumber")
+    skill_level: Literal["Intern", "Junior", "Senior"] = Field(alias="skillLevel")
+    difficulty: Literal["Beginner", "Intermediate", "Advanced"]
+    focus: list[str]
+    tags: list[str]
+
+
+class InterviewCatalogResponse(BaseModel):
+    interviews: list[InterviewCatalogItem]
+
+
+class CreateSessionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    packet_id: str = Field(default=DEFAULT_INTERVIEW_PROMPT_ID, alias="packetId")
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings(_env_file=ENV_FILES)
@@ -118,13 +143,12 @@ def get_settings() -> Settings:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     prompts = load_interview_prompts()
-    default_prompt = get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID, prompts)
     settings = get_settings()
     async with httpx.AsyncClient(timeout=settings.provider_timeout_seconds) as client:
         app.state.provider_http_client = client
         try:
             try:
-                await sync_elevenlabs_agent(client, settings, default_prompt)
+                await sync_elevenlabs_agent(client, settings, prompts)
             except HTTPException as exc:
                 raise RuntimeError(f"ElevenLabs startup sync failed: {exc.detail}") from exc
             yield
@@ -159,13 +183,33 @@ async def health() -> HealthResponse:
     return HealthResponse(ok=True, service=SERVICE_NAME)
 
 
+@app.get(
+    "/api/interviews",
+    response_model=InterviewCatalogResponse,
+    response_model_by_alias=True,
+)
+async def list_interviews() -> InterviewCatalogResponse:
+    prompts = load_interview_prompts()
+    ordered_prompts = sorted(
+        prompts.values(),
+        key=lambda prompt: (SKILL_LEVEL_ORDER[prompt.skill_level], prompt.question_number),
+    )
+    return InterviewCatalogResponse(interviews=[public_interview_metadata(prompt) for prompt in ordered_prompts])
+
+
 @app.post(
     "/api/session",
     response_model=LiveSessionResponse,
     response_model_by_alias=True,
 )
-async def create_session() -> LiveSessionResponse:
+async def create_session(request: CreateSessionRequest | None = None) -> LiveSessionResponse:
     settings = get_settings()
+    packet_id = request.packet_id if request is not None else DEFAULT_INTERVIEW_PROMPT_ID
+    try:
+        prompt = get_interview_prompt(packet_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown interview packet: {packet_id}") from exc
+
     keyframe_api_key = require_setting(settings.keyframe_api_key, "KEYFRAME_API_KEY")
     elevenlabs_api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
     elevenlabs_agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
@@ -173,7 +217,12 @@ async def create_session() -> LiveSessionResponse:
 
     session_details, signed_url = await asyncio.gather(
         create_keyframe_session(client, keyframe_api_key, settings),
-        get_elevenlabs_signed_url(client, elevenlabs_api_key, elevenlabs_agent_id, settings),
+        get_elevenlabs_signed_url(
+            client,
+            elevenlabs_api_key,
+            elevenlabs_agent_id,
+            settings,
+        ),
     )
 
     return LiveSessionResponse(
@@ -181,6 +230,7 @@ async def create_session() -> LiveSessionResponse:
         voice_agent_details=VoiceAgentDetails(
             agent_id=elevenlabs_agent_id,
             signed_url=signed_url.signed_url,
+            dynamic_variables={"interview_packet_id": prompt.prompt_id},
         ),
         conversation_id=signed_url.conversation_id,
     )
@@ -221,6 +271,10 @@ async def get_elevenlabs_signed_url(
     settings: Settings | None = None,
 ) -> ElevenLabsSignedUrlResponse:
     settings = settings or get_settings()
+    params = {
+        "agent_id": agent_id,
+        "include_conversation_id": "true",
+    }
     body = await provider_json(
         client,
         "GET",
@@ -228,10 +282,7 @@ async def get_elevenlabs_signed_url(
         {"xi-api-key": api_key},
         None,
         "ElevenLabs signed URL request failed",
-        params={
-            "agent_id": agent_id,
-            "include_conversation_id": "true",
-        },
+        params=params,
     )
 
     return validate_provider_model(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
@@ -241,7 +292,7 @@ async def update_elevenlabs_agent(
     client: httpx.AsyncClient,
     api_key: str,
     agent_id: str,
-    prompt: InterviewPrompt,
+    prompts: Mapping[str, InterviewPrompt],
     settings: Settings | None = None,
 ) -> None:
     settings = settings or get_settings()
@@ -253,7 +304,7 @@ async def update_elevenlabs_agent(
             "Content-Type": "application/json",
             "xi-api-key": api_key,
         },
-        build_elevenlabs_agent_update_payload(prompt),
+        build_elevenlabs_agent_update_payload(prompts),
         "ElevenLabs agent update failed",
     )
 
@@ -261,26 +312,33 @@ async def update_elevenlabs_agent(
 async def sync_elevenlabs_agent(
     client: httpx.AsyncClient,
     settings: Settings | None = None,
-    prompt: InterviewPrompt | None = None,
-) -> InterviewPrompt:
+    prompts: Mapping[str, InterviewPrompt] | None = None,
+) -> Mapping[str, InterviewPrompt]:
     settings = settings or get_settings()
     api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
     agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
-    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
-    await update_elevenlabs_agent(client, api_key, agent_id, selected_prompt, settings)
-    logger.info("Synced ElevenLabs agent %s with interview prompt %s", agent_id, selected_prompt.prompt_id)
-    return selected_prompt
+    selected_prompts = prompts or load_interview_prompts()
+    await update_elevenlabs_agent(client, api_key, agent_id, selected_prompts, settings)
+    logger.info("Synced ElevenLabs agent %s with %d interview prompts", agent_id, len(selected_prompts))
+    return selected_prompts
 
 
-def build_elevenlabs_agent_update_payload(prompt: InterviewPrompt | None = None) -> dict[str, Any]:
-    selected_prompt = prompt or get_interview_prompt(DEFAULT_INTERVIEW_PROMPT_ID)
+def build_elevenlabs_agent_update_payload(
+    prompts: Mapping[str, InterviewPrompt] | None = None,
+) -> dict[str, Any]:
+    selected_prompts = prompts or load_interview_prompts()
     return {
         "conversation_config": {
             "agent": {
                 "first_message": LYRA_FIRST_MESSAGE,
                 "disable_first_message_interruptions": True,
+                "dynamic_variables": {
+                    "dynamic_variable_placeholders": {
+                        "interview_packet_id": DEFAULT_INTERVIEW_PROMPT_ID,
+                    }
+                },
                 "prompt": {
-                    "prompt": selected_prompt.prompt,
+                    "prompt": build_shared_elevenlabs_prompt(selected_prompts),
                 },
             },
             "turn": {
@@ -289,6 +347,30 @@ def build_elevenlabs_agent_update_payload(prompt: InterviewPrompt | None = None)
             },
         }
     }
+
+
+def build_shared_elevenlabs_prompt(prompts: Mapping[str, InterviewPrompt]) -> str:
+    if not prompts:
+        raise ValueError("At least one interview prompt is required.")
+
+    packet_sections = []
+    for prompt_id in sorted(prompts):
+        prompt = prompts[prompt_id]
+        packet_sections.append(
+            f'<interview_packet id="{prompt.prompt_id}">\n{prompt.prompt.strip()}\n</interview_packet>'
+        )
+
+    return "\n\n".join(
+        [
+            """# Interview packet routing
+
+The selected interview packet ID for this conversation is `{{interview_packet_id}}`.
+Follow only the `<interview_packet>` whose `id` exactly matches that value. Treat every other packet as unavailable:
+never mix its requirements, hints, private reference, or evaluation guidance into this interview. Never mention packet
+routing, the packet library, dynamic variables, or the contents of an unselected packet to the candidate.""",
+            *packet_sections,
+        ]
+    )
 
 
 async def provider_json(
@@ -375,3 +457,17 @@ def require_setting(value: str | None, name: str) -> str:
     if not value:
         raise HTTPException(status_code=400, detail=f"Missing {name}. Add it to .env and restart pnpm dev.")
     return value
+
+
+def public_interview_metadata(prompt: InterviewPrompt) -> InterviewCatalogItem:
+    """Build the browser contract from an explicit public-field allowlist."""
+    return InterviewCatalogItem(
+        packet_id=prompt.prompt_id,
+        title=prompt.display_name,
+        summary=prompt.summary,
+        question_number=prompt.question_number,
+        skill_level=prompt.skill_level,
+        difficulty=prompt.difficulty,
+        focus=list(prompt.focus),
+        tags=list(prompt.tags),
+    )
