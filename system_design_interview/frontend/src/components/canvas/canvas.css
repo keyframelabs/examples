@@ -2,7 +2,7 @@
   --canvas-paper: hsl(210 40% 98%);
   --canvas-ink: hsl(222 33% 15%);
   --canvas-grid: hsl(215 20% 65%);
-  --canvas-grid-dot: hsl(215 20% 65% / 42%);
+  --canvas-grid-dot: hsl(215 20% 65% / 80%);
   --canvas-connection: hsl(215 25% 37%);
   --canvas-connection-selected: hsl(173 80% 26%);
   --canvas-avatar-surface: hsl(210 11% 8%);

@@ -204,7 +204,7 @@ export function InterviewPacketLanding({
 
   return (
     <section className="h-screen overflow-y-auto bg-canvas-paper px-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col justify-center border-x border-border/50 py-8">
+      <div className="mx-auto flex min-h-screen max-w-7xl -translate-y-4 flex-col justify-center border-x border-border/50 py-8 [zoom:1.1] sm:-translate-y-8 lg:-translate-y-12">
         <header className="mx-auto mb-8 max-w-5xl text-center">
           <div className="mx-auto mb-4 size-36 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-40">
             <img
