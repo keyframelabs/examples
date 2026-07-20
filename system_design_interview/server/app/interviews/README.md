@@ -1,18 +1,14 @@
-# Interview prompts
+# Interview prompt authoring
 
-Only Markdown files in `prompts/` are loaded as interview prompts. To add one, copy the existing TinyURL prompt:
+Interview packets are Markdown files in `server/app/interviews/prompts/`.
 
-```sh
-cp prompts/tinyurl_interview_prompt.md prompts/my_interview_prompt.md
-```
-
-Update its YAML front matter and Markdown body, then validate it:
+From the repository root, copy an existing packet:
 
 ```sh
-pnpm interview:validate
+cp server/app/interviews/prompts/tinyurl_interview_prompt.md server/app/interviews/prompts/my_interview_prompt.md
 ```
 
-The required metadata is:
+Replace its YAML front matter and Markdown body:
 
 ```yaml
 ---
@@ -29,17 +25,22 @@ tags:
   - databases
   - backend
 ---
+
+# Interview instructions
+...
 ```
 
-`id` must be unique kebab-case. `skill_level` is `Intern`, `Junior`, or `Senior`; `difficulty` is `Beginner`,
-`Intermediate`, or `Advanced`. The catalog currently pairs those values by tier: Intern/Beginner,
-Junior/Intermediate, and Senior/Advanced.
-Filenames are free-form and do not determine prompt identity. The catalog API serializes only the public front-matter
-fields shown above. It omits the Markdown body, source path, provider configuration, private reference, and evaluation
-guidance. The session response intentionally includes the complete body for the selected packet as described below.
+Validation requires:
 
-The Markdown after the front matter is sent as the `interview_packet` dynamic variable only when a user starts that
-packet. The shared opening message and default prompt ID live in `interview_loader.py`; do not put provider
-configuration in packet front matter. The persistent ElevenLabs prompt contains only the dynamic-variable placeholder,
-not the packet library. For this MVP, the selected Markdown body is intentionally visible in the browser session
-response, while unselected packet bodies remain absent.
+- Front matter starts on the first line, contains every field above, and contains no extra fields.
+- `id` is unique lowercase kebab-case; `question_number` is a positive integer.
+- A packet with the `tinyurl-system-design` ID remains present.
+- `display_name`, `summary`, and the Markdown body are nonempty.
+- `focus` and `tags` are nonempty lists of nonempty, unique strings.
+- `skill_level` is `Intern`, `Junior`, or `Senior`; `difficulty` is `Beginner`, `Intermediate`, or `Advanced`.
+
+The filename does not determine the packet ID. Validate all packets from the repository root:
+
+```sh
+pnpm interview:validate
+```

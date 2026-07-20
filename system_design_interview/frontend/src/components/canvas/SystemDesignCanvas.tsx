@@ -15,17 +15,6 @@ import {
   type ReactFlowInstance
 } from "@xyflow/react";
 import {
-  ArrowRight,
-  Database,
-  MousePointer2,
-  Redo2,
-  Square,
-  Table2,
-  Type,
-  Undo2,
-  type LucideIcon
-} from "lucide-react";
-import {
   useCallback,
   useEffect,
   useMemo,
@@ -35,6 +24,17 @@ import {
   type ReactNode
 } from "react";
 
+import {
+  CanvasToolbar,
+  CardinalityMenu,
+  type CardinalityMenuState
+} from "@/components/canvas/CanvasControls";
+import {
+  geometryChanges,
+  isSameFlowEndpoint,
+  isTableRelationship,
+  scheduleCanvasTextSerialization
+} from "@/components/canvas/canvasFlowHelpers";
 import {
   canvasStateToFlowElements,
   flowConnectionToEndpoints,
@@ -60,34 +60,13 @@ import {
 import {
   isConnection,
   isNode,
-  type CanvasConnection,
   type CanvasConnectionCardinality,
-  type CanvasElement,
   type CanvasState,
   type CanvasTextMetadata,
   type CanvasTool
 } from "@/components/canvas/model/types";
 import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import {
-  ToggleGroup,
-  ToggleGroupItem
-} from "@/components/ui/toggle-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-
-interface CardinalityMenuState {
-  connectionId: string;
-  x: number;
-  y: number;
-}
 
 export interface SystemDesignCanvasProps {
   initialState?: CanvasState;
@@ -102,32 +81,6 @@ export interface SystemDesignCanvasProps {
 const NODE_TYPES = { system: SystemDesignNode };
 const EDGE_TYPES = { system: SystemDesignEdge };
 const DEFAULT_VIEWPORT = { x: 150, y: 110, zoom: 1 };
-const CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS = 750;
-const CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS = 120;
-
-const toolItems: Array<{
-  id: CanvasTool;
-  label: string;
-  icon: LucideIcon;
-}> = [
-    { id: "select", label: "Select", icon: MousePointer2 },
-    { id: "service", label: "Service", icon: Square },
-    { id: "database", label: "Database", icon: Database },
-    { id: "table", label: "Table", icon: Table2 },
-    { id: "text", label: "Text", icon: Type },
-    { id: "connector", label: "Connector", icon: ArrowRight }
-  ];
-
-const cardinalityItems: Array<{
-  id: CanvasConnectionCardinality;
-  label: string;
-  shortLabel: string;
-}> = [
-    { id: "one-to-one", label: "One to one", shortLabel: "1:1" },
-    { id: "one-to-many", label: "One to many", shortLabel: "1:N" },
-    { id: "many-to-one", label: "Many to one", shortLabel: "N:1" },
-    { id: "many-to-many", label: "Many to many", shortLabel: "N:N" }
-  ];
 
 export function SystemDesignCanvas({
   initialState,
@@ -700,274 +653,4 @@ export function SystemDesignCanvas({
       ) : null}
     </section>
   );
-}
-
-function CanvasToolbar({
-  tool,
-  canUndo,
-  canRedo,
-  connectionCardinality,
-  onToolChange,
-  onCardinalityChange,
-  onUndo,
-  onRedo,
-  toolbarEnd
-}: {
-  tool: CanvasTool;
-  canUndo: boolean;
-  canRedo: boolean;
-  connectionCardinality: CanvasConnectionCardinality;
-  onToolChange: (tool: CanvasTool) => void;
-  onCardinalityChange: (cardinality: CanvasConnectionCardinality) => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  toolbarEnd?: ReactNode;
-}) {
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur-sm">
-        <ToggleGroup
-          type="single"
-          value={tool}
-          onValueChange={(nextTool) =>
-            onToolChange((nextTool || "select") as CanvasTool)
-          }
-        >
-          {toolItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Tooltip key={item.id}>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <ToggleGroupItem
-                      value={item.id}
-                      aria-label={item.label}
-                      size="icon"
-                    >
-                      <Icon size={18} />
-                    </ToggleGroupItem>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{item.label}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </ToggleGroup>
-        <Separator orientation="vertical" className="mx-1 h-7" />
-        <ToolbarButton
-          label="Undo"
-          disabled={!canUndo}
-          onClick={onUndo}
-          icon={<Undo2 size={18} />}
-        />
-        <ToolbarButton
-          label="Redo"
-          disabled={!canRedo}
-          onClick={onRedo}
-          icon={<Redo2 size={18} />}
-        />
-        {toolbarEnd ? (
-          <>
-            <Separator orientation="vertical" className="mx-1 h-7" />
-            {toolbarEnd}
-          </>
-        ) : null}
-      </Card>
-
-      {tool === "connector" ? (
-        <Card className="absolute left-4 top-[72px] z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur-sm">
-          <ToggleGroup
-            type="single"
-            value={connectionCardinality}
-            onValueChange={(nextCardinality) => {
-              if (nextCardinality) {
-                onCardinalityChange(
-                  nextCardinality as CanvasConnectionCardinality
-                );
-              }
-            }}
-          >
-            {cardinalityItems.map((item) => (
-              <Tooltip key={item.id}>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <ToggleGroupItem
-                      value={item.id}
-                      aria-label={item.label}
-                      size="sm"
-                      className="min-w-10 tabular-nums"
-                    >
-                      {item.shortLabel}
-                    </ToggleGroupItem>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{item.label}</TooltipContent>
-              </Tooltip>
-            ))}
-          </ToggleGroup>
-        </Card>
-      ) : null}
-    </TooltipProvider>
-  );
-}
-
-function ToolbarButton({
-  label,
-  disabled,
-  onClick,
-  icon
-}: {
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          aria-label={label}
-          disabled={disabled}
-          variant="ghost"
-          size="icon"
-          onClick={onClick}
-        >
-          {icon}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function CardinalityMenu({
-  menu,
-  connection,
-  onSelect,
-  onClose
-}: {
-  menu: CardinalityMenuState;
-  connection: CanvasElement | undefined;
-  onSelect: (cardinality: CanvasConnectionCardinality) => void;
-  onClose: () => void;
-}) {
-  if (!isConnection(connection)) return null;
-
-  return (
-    <Card
-      className="fixed z-40 w-[232px] bg-card/95 p-2 backdrop-blur-sm"
-      style={{ left: menu.x, top: menu.y }}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <div className="text-xs font-semibold uppercase text-muted-foreground">
-          Relationship
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-1.5 text-xs"
-          onClick={onClose}
-        >
-          Close
-        </Button>
-      </div>
-      <ToggleGroup
-        type="single"
-        value={connection.cardinality ?? "one-to-one"}
-        onValueChange={(nextCardinality) => {
-          if (nextCardinality) {
-            onSelect(nextCardinality as CanvasConnectionCardinality);
-          }
-        }}
-        className="grid grid-cols-2 gap-1"
-      >
-        {cardinalityItems.map((item) => (
-          <ToggleGroupItem
-            key={item.id}
-            value={item.id}
-            size="sm"
-            title={item.label}
-            aria-label={item.label}
-            className="justify-center tabular-nums"
-          >
-            {item.shortLabel}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
-    </Card>
-  );
-}
-
-function geometryChanges(
-  changes: NodeChange<SystemFlowNode>[],
-  state: CanvasState
-): FlowNodeGeometry[] {
-  const byId = new Map<string, FlowNodeGeometry>();
-
-  for (const change of changes) {
-    if (change.type !== "position" && change.type !== "dimensions") continue;
-    const element = state.elements[change.id];
-    if (!isNode(element)) continue;
-    const geometry = byId.get(change.id) ?? {
-      id: change.id,
-      x: element.x,
-      y: element.y
-    };
-
-    if (change.type === "position" && change.position) {
-      geometry.x = change.position.x;
-      geometry.y = change.position.y;
-    }
-    if (change.type === "dimensions" && change.dimensions) {
-      geometry.width = change.dimensions.width;
-      geometry.height = change.dimensions.height;
-    }
-    byId.set(change.id, geometry);
-  }
-
-  return [...byId.values()];
-}
-
-function isSameFlowEndpoint(connection: Connection): boolean {
-  return (
-    connection.source === connection.target &&
-    connection.sourceHandle === connection.targetHandle
-  );
-}
-
-function isTableRelationship(
-  from: Exclude<CanvasElement, CanvasConnection>,
-  to: Exclude<CanvasElement, CanvasConnection>
-) {
-  return from.kind === "table" && to.kind === "table";
-}
-
-function scheduleCanvasTextSerialization(callback: () => void): () => void {
-  if (typeof window === "undefined") {
-    const handle = globalThis.setTimeout(callback, 0);
-    return () => globalThis.clearTimeout(handle);
-  }
-
-  const idleScheduler = window as unknown as {
-    requestIdleCallback?: (
-      callback: IdleRequestCallback,
-      options?: IdleRequestOptions
-    ) => number;
-    cancelIdleCallback?: (handle: number) => void;
-  };
-
-  if (typeof idleScheduler.requestIdleCallback === "function") {
-    const handle = idleScheduler.requestIdleCallback(callback, {
-      timeout: CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS
-    });
-    return () => idleScheduler.cancelIdleCallback?.(handle);
-  }
-
-  const handle = globalThis.setTimeout(
-    callback,
-    CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS
-  );
-  return () => globalThis.clearTimeout(handle);
 }
