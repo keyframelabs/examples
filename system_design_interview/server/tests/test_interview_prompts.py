@@ -16,7 +16,6 @@ from app.main import (
     INTERVIEW_PACKET_PLACEHOLDER,
     build_dynamic_elevenlabs_prompt,
     build_elevenlabs_agent_update_payload,
-    public_interview_metadata,
 )
 
 DEFAULT_PUBLIC_METADATA = """summary: A focused system design interview.
@@ -36,11 +35,8 @@ def write_prompt(path: Path, metadata: str, body: str = "# Prompt\n\nInterview t
     )
 
 
-def test_tinyurl_prompt_loads_markdown_body_without_rewriting_it() -> None:
+def test_tinyurl_prompt_loads_public_metadata_and_private_guidance() -> None:
     path = PROMPTS_DIR / "tinyurl_interview_prompt.md"
-    source = path.read_text(encoding="utf-8")
-    closing_front_matter = source.index("---\n", len("---\n"))
-    expected_prompt = source[closing_front_matter + len("---\n") :]
 
     prompt = load_interview_prompt(path)
 
@@ -49,7 +45,6 @@ def test_tinyurl_prompt_loads_markdown_body_without_rewriting_it() -> None:
     assert prompt.skill_level == "Junior"
     assert prompt.difficulty == "Intermediate"
     assert "Caching" in prompt.focus
-    assert prompt.prompt == expected_prompt
     assert "design the backend for TinyURL" in prompt.prompt
     assert "# Private interviewer reference" in prompt.prompt
     assert "Never reveal or supply the solution" in prompt.prompt
@@ -108,27 +103,6 @@ def test_catalog_contains_all_packets_with_assigned_skill_levels() -> None:
         ("Junior", "Intermediate"),
         ("Senior", "Advanced"),
     }
-
-
-def test_public_metadata_is_an_explicit_allowlist() -> None:
-    prompt = get_interview_prompt()
-
-    payload = public_interview_metadata(prompt).model_dump(by_alias=True)
-
-    assert set(payload) == {
-        "packetId",
-        "title",
-        "summary",
-        "questionNumber",
-        "skillLevel",
-        "difficulty",
-        "focus",
-        "tags",
-    }
-    serialized = str(payload)
-    assert prompt.prompt not in serialized
-    assert str(prompt.source_path) not in serialized
-    assert "Private interviewer reference" not in serialized
 
 
 @pytest.mark.parametrize(

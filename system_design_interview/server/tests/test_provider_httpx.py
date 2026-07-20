@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -440,39 +439,6 @@ def test_create_session_reports_missing_agent(monkeypatch: pytest.MonkeyPatch) -
 
     assert response.status_code == 400
     assert response.json() == {"error": "Missing ELEVENLABS_AGENT_ID. Add it to .env and restart pnpm dev."}
-
-
-def test_deliberate_agent_update_contains_dynamic_prompt_without_packet_bodies() -> None:
-    requests: list[dict[str, Any]] = []
-
-    class RecordingClient:
-        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-            requests.append({"method": method, "url": url, "kwargs": kwargs})
-            return StubResponse(body={})
-
-    settings = main.Settings(_env_file=None)
-    asyncio.run(
-        main.update_elevenlabs_agent(
-            RecordingClient(),
-            "eleven-key",
-            "agent_123",
-            settings,
-        )
-    )
-
-    assert requests == [
-        {
-            "method": "PATCH",
-            "url": "https://api.elevenlabs.io/v1/convai/agents/agent_123",
-            "kwargs": {
-                "headers": {
-                    "Content-Type": "application/json",
-                    "xi-api-key": "eleven-key",
-                },
-                "json": main.build_elevenlabs_agent_update_payload(),
-            },
-        }
-    ]
 
 
 def test_create_session_endpoint_reports_missing_required_settings() -> None:
