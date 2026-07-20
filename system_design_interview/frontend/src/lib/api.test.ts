@@ -123,7 +123,7 @@ describe("interview API", () => {
         agent_id: "agent_123",
         signed_url: "wss://elevenlabs.example/live",
         dynamic_variables: {
-          interview_packet_id: "kafka-like-distributed-log"
+          interview_packet: "# Design a distributed log\n\nPrivate interviewer reference"
         }
       }
     }));
@@ -141,7 +141,7 @@ describe("interview API", () => {
     );
   });
 
-  it("requires packet routing data in live session credentials", async () => {
+  it("requires the selected packet dynamic variable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse({
       sessionDetails: {
         server_url: "wss://keyframe.example/live",

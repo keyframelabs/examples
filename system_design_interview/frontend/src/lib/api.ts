@@ -13,7 +13,7 @@ export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   agent_id: string;
   signed_url: string;
   dynamic_variables: {
-    interview_packet_id: string;
+    interview_packet: string;
   };
 };
 
@@ -168,7 +168,7 @@ function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {
     && typeof value.voiceAgentDetails.signed_url === "string"
     && typeof value.voiceAgentDetails.agent_id === "string"
     && isRecord(value.voiceAgentDetails.dynamic_variables)
-    && typeof value.voiceAgentDetails.dynamic_variables.interview_packet_id === "string";
+    && typeof value.voiceAgentDetails.dynamic_variables.interview_packet === "string";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

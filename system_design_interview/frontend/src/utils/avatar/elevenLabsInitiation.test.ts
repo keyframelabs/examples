@@ -5,7 +5,7 @@ afterEach(() => {
 });
 
 describe("ElevenLabs conversation initiation", () => {
-  it("sends packet selection before the conversation begins", async () => {
+  it("sends the selected interview packet before the conversation begins", async () => {
     const sockets: MockWebSocket[] = [];
 
     class RecordingWebSocket extends MockWebSocket {
@@ -25,7 +25,7 @@ describe("ElevenLabs conversation initiation", () => {
       agentId: "agent_123",
       signedUrl: "wss://elevenlabs.example/conversation",
       dynamicVariables: {
-        interview_packet_id: "kafka-like-distributed-log"
+        interview_packet: "# Design a distributed log\n\nPrivate interviewer reference"
       }
     });
 
@@ -35,7 +35,7 @@ describe("ElevenLabs conversation initiation", () => {
       JSON.stringify({
         type: "conversation_initiation_client_data",
         dynamic_variables: {
-          interview_packet_id: "kafka-like-distributed-log"
+          interview_packet: "# Design a distributed log\n\nPrivate interviewer reference"
         }
       })
     ]);

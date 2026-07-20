@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, Optional, TypeVar
 from urllib.parse import quote
 
@@ -23,7 +24,6 @@ from .interviews.interview_loader import (
     DEFAULT_TURN_TIMEOUT_SECONDS,
     LYRA_FIRST_MESSAGE,
     InterviewPrompt,
-    get_interview_prompt,
     load_interview_prompts,
 )
 
@@ -35,6 +35,8 @@ DEFAULT_CLIENT_ORIGINS = [
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 35.0
 SERVICE_NAME = "kfl-system-design-interview"
 SKILL_LEVEL_ORDER = {"Intern": 0, "Junior": 1, "Senior": 2}
+INTERVIEW_PACKET_DYNAMIC_VARIABLE = "interview_packet"
+INTERVIEW_PACKET_PLACEHOLDER = "No interview packet was provided. Do not begin an interview."
 
 logger = logging.getLogger(__name__)
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -148,13 +150,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.provider_http_client = client
         try:
             try:
-                await sync_elevenlabs_agent(client, settings, prompts)
+                await sync_elevenlabs_agent(client, settings)
             except HTTPException as exc:
                 raise RuntimeError(f"ElevenLabs startup sync failed: {exc.detail}") from exc
+            app.state.interview_prompts = MappingProxyType(dict(prompts))
             yield
         finally:
             if hasattr(app.state, "provider_http_client"):
                 delattr(app.state, "provider_http_client")
+            if hasattr(app.state, "interview_prompts"):
+                delattr(app.state, "interview_prompts")
 
 
 app = FastAPI(title="KFL System Design Interview API", lifespan=lifespan)
@@ -189,7 +194,7 @@ async def health() -> HealthResponse:
     response_model_by_alias=True,
 )
 async def list_interviews() -> InterviewCatalogResponse:
-    prompts = load_interview_prompts()
+    prompts = get_synced_interview_prompts()
     ordered_prompts = sorted(
         prompts.values(),
         key=lambda prompt: (SKILL_LEVEL_ORDER[prompt.skill_level], prompt.question_number),
@@ -205,9 +210,10 @@ async def list_interviews() -> InterviewCatalogResponse:
 async def create_session(request: CreateSessionRequest | None = None) -> LiveSessionResponse:
     settings = get_settings()
     packet_id = request.packet_id if request is not None else DEFAULT_INTERVIEW_PROMPT_ID
+    prompts = get_synced_interview_prompts()
     try:
-        prompt = get_interview_prompt(packet_id)
-    except ValueError as exc:
+        prompt = prompts[packet_id]
+    except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown interview packet: {packet_id}") from exc
 
     keyframe_api_key = require_setting(settings.keyframe_api_key, "KEYFRAME_API_KEY")
@@ -230,7 +236,7 @@ async def create_session(request: CreateSessionRequest | None = None) -> LiveSes
         voice_agent_details=VoiceAgentDetails(
             agent_id=elevenlabs_agent_id,
             signed_url=signed_url.signed_url,
-            dynamic_variables={"interview_packet_id": prompt.prompt_id},
+            dynamic_variables={INTERVIEW_PACKET_DYNAMIC_VARIABLE: prompt.prompt.strip()},
         ),
         conversation_id=signed_url.conversation_id,
     )
@@ -241,6 +247,13 @@ def get_provider_http_client() -> httpx.AsyncClient:
     if client is None:
         raise RuntimeError("Provider HTTP client is not initialized.")
     return client
+
+
+def get_synced_interview_prompts() -> Mapping[str, InterviewPrompt]:
+    prompts = getattr(app.state, "interview_prompts", None)
+    if prompts is None:
+        raise RuntimeError("Interview prompt snapshot is not initialized.")
+    return prompts
 
 
 async def create_keyframe_session(
@@ -292,7 +305,6 @@ async def update_elevenlabs_agent(
     client: httpx.AsyncClient,
     api_key: str,
     agent_id: str,
-    prompts: Mapping[str, InterviewPrompt],
     settings: Settings | None = None,
 ) -> None:
     settings = settings or get_settings()
@@ -304,7 +316,7 @@ async def update_elevenlabs_agent(
             "Content-Type": "application/json",
             "xi-api-key": api_key,
         },
-        build_elevenlabs_agent_update_payload(prompts),
+        build_elevenlabs_agent_update_payload(),
         "ElevenLabs agent update failed",
     )
 
@@ -312,21 +324,15 @@ async def update_elevenlabs_agent(
 async def sync_elevenlabs_agent(
     client: httpx.AsyncClient,
     settings: Settings | None = None,
-    prompts: Mapping[str, InterviewPrompt] | None = None,
-) -> Mapping[str, InterviewPrompt]:
+) -> None:
     settings = settings or get_settings()
     api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
     agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
-    selected_prompts = prompts or load_interview_prompts()
-    await update_elevenlabs_agent(client, api_key, agent_id, selected_prompts, settings)
-    logger.info("Synced ElevenLabs agent %s with %d interview prompts", agent_id, len(selected_prompts))
-    return selected_prompts
+    await update_elevenlabs_agent(client, api_key, agent_id, settings)
+    logger.info("Synced ElevenLabs agent %s with the dynamic interview packet prompt", agent_id)
 
 
-def build_elevenlabs_agent_update_payload(
-    prompts: Mapping[str, InterviewPrompt] | None = None,
-) -> dict[str, Any]:
-    selected_prompts = prompts or load_interview_prompts()
+def build_elevenlabs_agent_update_payload() -> dict[str, Any]:
     return {
         "conversation_config": {
             "agent": {
@@ -334,11 +340,11 @@ def build_elevenlabs_agent_update_payload(
                 "disable_first_message_interruptions": True,
                 "dynamic_variables": {
                     "dynamic_variable_placeholders": {
-                        "interview_packet_id": DEFAULT_INTERVIEW_PROMPT_ID,
+                        INTERVIEW_PACKET_DYNAMIC_VARIABLE: INTERVIEW_PACKET_PLACEHOLDER,
                     }
                 },
                 "prompt": {
-                    "prompt": build_shared_elevenlabs_prompt(selected_prompts),
+                    "prompt": build_dynamic_elevenlabs_prompt(),
                 },
             },
             "turn": {
@@ -347,6 +353,17 @@ def build_elevenlabs_agent_update_payload(
             },
         }
     }
+
+
+def build_dynamic_elevenlabs_prompt() -> str:
+    return """# Selected interview packet
+
+The complete interview packet for this conversation appears inside `<interview_packet>`. Follow that packet as the
+authoritative interview instructions. Never mention dynamic variables or the packet wrapper to the candidate.
+
+<interview_packet>
+{{interview_packet}}
+</interview_packet>"""
 
 
 def build_shared_elevenlabs_prompt(prompts: Mapping[str, InterviewPrompt]) -> str:
@@ -364,7 +381,7 @@ def build_shared_elevenlabs_prompt(prompts: Mapping[str, InterviewPrompt]) -> st
         [
             """# Interview packet routing
 
-The selected interview packet ID for this conversation is `{{interview_packet_id}}`.
+kk The selected interview packet ID for this conversation is `{{interview_packet_id}}`.
 Follow only the `<interview_packet>` whose `id` exactly matches that value. Treat every other packet as unavailable:
 never mix its requirements, hints, private reference, or evaluation guidance into this interview. Never mention packet
 routing, the packet library, dynamic variables, or the contents of an unselected packet to the candidate.""",

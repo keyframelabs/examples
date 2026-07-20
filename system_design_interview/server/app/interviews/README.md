@@ -35,10 +35,11 @@ tags:
 `Intermediate`, or `Advanced`. The catalog currently pairs those values by tier: Intern/Beginner,
 Junior/Intermediate, and Senior/Advanced.
 Filenames are free-form and do not determine prompt identity. The catalog API serializes only the public front-matter
-fields shown above. The Markdown body, source path, provider configuration, private reference, and evaluation guidance
-remain server-only.
+fields shown above. It omits the Markdown body, source path, provider configuration, private reference, and evaluation
+guidance. The session response intentionally includes the complete body for the selected packet as described below.
 
-The Markdown after the front matter is added to the shared ElevenLabs agent prompt library. The shared opening message
-and default prompt ID live in `interview_loader.py`. At conversation initiation, the application sends the selected
-public packet ID through the `interview_packet_id` dynamic variable; the agent follows only the matching prompt. Do not
-put provider configuration in packet front matter.
+The Markdown after the front matter is sent as the `interview_packet` dynamic variable only when a user starts that
+packet. The shared opening message and default prompt ID live in `interview_loader.py`; do not put provider
+configuration in packet front matter. The persistent ElevenLabs prompt contains only the dynamic-variable placeholder,
+not the packet library. For this MVP, the selected Markdown body is intentionally visible in the browser session
+response, while unselected packet bodies remain absent.

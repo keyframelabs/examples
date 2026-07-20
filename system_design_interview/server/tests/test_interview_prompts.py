@@ -12,6 +12,9 @@ from app.interviews.interview_loader import (
     load_interview_prompts,
 )
 from app.main import (
+    INTERVIEW_PACKET_DYNAMIC_VARIABLE,
+    INTERVIEW_PACKET_PLACEHOLDER,
+    build_dynamic_elevenlabs_prompt,
     build_elevenlabs_agent_update_payload,
     build_shared_elevenlabs_prompt,
     public_interview_metadata,
@@ -194,23 +197,23 @@ def test_unknown_prompt_lookup_is_clear() -> None:
         get_interview_prompt("missing-prompt", {})
 
 
-def test_elevenlabs_payload_uses_prompt_and_shared_interviewer_settings() -> None:
+def test_elevenlabs_payload_uses_one_conversation_packet_variable() -> None:
     prompts = load_interview_prompts()
-    payload = build_elevenlabs_agent_update_payload(prompts)
+    payload = build_elevenlabs_agent_update_payload()
     agent = payload["conversation_config"]["agent"]
 
     assert agent["first_message"] == LYRA_FIRST_MESSAGE
     assert agent["disable_first_message_interruptions"] is True
     assert agent["dynamic_variables"] == {
         "dynamic_variable_placeholders": {
-            "interview_packet_id": DEFAULT_INTERVIEW_PROMPT_ID,
+            INTERVIEW_PACKET_DYNAMIC_VARIABLE: INTERVIEW_PACKET_PLACEHOLDER,
         }
     }
-    shared_prompt = agent["prompt"]["prompt"]
-    assert "{{interview_packet_id}}" in shared_prompt
+    dynamic_prompt = agent["prompt"]["prompt"]
+    assert dynamic_prompt == build_dynamic_elevenlabs_prompt()
+    assert "{{interview_packet}}" in dynamic_prompt
     for prompt in prompts.values():
-        assert f'<interview_packet id="{prompt.prompt_id}">' in shared_prompt
-        assert prompt.prompt.strip() in shared_prompt
+        assert prompt.prompt.strip() not in dynamic_prompt
     assert payload["conversation_config"]["turn"] == {
         "turn_timeout": 15,
         "turn_eagerness": "normal",

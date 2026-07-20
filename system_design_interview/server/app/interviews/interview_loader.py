@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 DEFAULT_INTERVIEW_PROMPT_ID = "tinyurl-system-design"
 DEFAULT_TURN_TIMEOUT_SECONDS = 15
 DEFAULT_TURN_EAGERNESS = "normal"
-LYRA_FIRST_MESSAGE = "Hi, my name is Lyra and I'll be conducting your system design interview today. How was your day?"
+LYRA_FIRST_MESSAGE = "Hi, my name is Lyra and I'll be conducting your system design interview today. How has your day been?"
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 PROMPT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

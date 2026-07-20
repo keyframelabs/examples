@@ -42,18 +42,32 @@ Do not overwrite an existing customized component without reviewing the resultin
 
 `PROVIDER_TIMEOUT_SECONDS` controls the timeout for Keyframe session creation and ElevenLabs signed URL requests.
 
-## ElevenLabs Agent Setup
+## ElevenLabs agent setup
 
-Configure the shared ElevenLabs agent in `.env`:
+Use a single ElevenLabs agent across all interview packets. The persistent agent prompt contains one
+`{{interview_packet}}` dynamic-variable placeholder and never embeds the complete packet library. When a user begins an
+interview, the server returns only the selected packet body and the browser supplies it to that conversation.
+
+### Portal setup
+
+1. Under Agent Security, enable signed-URL authentication. ElevenLabs requires choosing signed URLs or a hostname
+   allowlist, not both.
+2. System Prompt overrides are not used and can remain disabled. Dynamic variables do not require that override.
+3. Ensure `ELEVENLABS_API_KEY` can update Agents, then configure the agent in `.env`:
 
 ```dotenv
 ELEVENLABS_AGENT_ID=agent_...
 ```
 
-Startup validates every Markdown interview prompt, then synchronizes one shared packet library and opening message to
-this agent before accepting requests. Session creation does not mutate the persistent agent configuration. Instead, it
-passes the selected public packet ID as the `interview_packet_id` dynamic variable when the ElevenLabs WebSocket starts.
-The shared agent follows only the matching packet, so all interviews use the same agent without branch configuration.
+Startup validates every Markdown packet, then updates the persistent agent configuration with the generic prompt,
+opening message, turn settings, and an `interview_packet` placeholder. No portal prompt editing is required after that
+sync. See the [dynamic variables guide](https://elevenlabs.io/docs/eleven-agents/customization/personalization/dynamic-variables),
+[authentication guide](https://elevenlabs.io/docs/eleven-agents/customization/authentication), and
+[signed URL API](https://elevenlabs.io/docs/api-reference/conversations/get-signed-url) for the provider details.
+
+For this MVP, the complete selected packet is intentionally present in the browser's session response and ElevenLabs
+conversation-initiation message. A user can inspect it. The isolation guarantee is that exactly one selected packet is
+sent to a conversation; unselected packets are never included in the persistent agent prompt or that session payload.
 
 Interview prompts live in `server/app/interviews/prompts/`. See the concise
 [authoring guide](server/app/interviews/README.md) or validate all prompts with:
@@ -65,5 +79,6 @@ pnpm interview:validate
 The application handles call disconnection. The prompt intentionally does not reference ElevenLabs `end_call` because
 that system tool is not currently exposed by the KFL SDK integration.
 
-Interview selection starts a new conversation with its packet ID fixed in the initiation data. Multiple interviews can
-safely reuse the shared agent without mutating shared configuration during session creation.
+Interview selection starts a new conversation with the selected packet fixed in the `interview_packet` dynamic
+variable. Multiple interviews safely reuse the same generic agent because session creation never mutates its persistent
+configuration.
