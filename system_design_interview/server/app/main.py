@@ -366,30 +366,6 @@ authoritative interview instructions. Never mention dynamic variables or the pac
 </interview_packet>"""
 
 
-def build_shared_elevenlabs_prompt(prompts: Mapping[str, InterviewPrompt]) -> str:
-    if not prompts:
-        raise ValueError("At least one interview prompt is required.")
-
-    packet_sections = []
-    for prompt_id in sorted(prompts):
-        prompt = prompts[prompt_id]
-        packet_sections.append(
-            f'<interview_packet id="{prompt.prompt_id}">\n{prompt.prompt.strip()}\n</interview_packet>'
-        )
-
-    return "\n\n".join(
-        [
-            """# Interview packet routing
-
-kk The selected interview packet ID for this conversation is `{{interview_packet_id}}`.
-Follow only the `<interview_packet>` whose `id` exactly matches that value. Treat every other packet as unavailable:
-never mix its requirements, hints, private reference, or evaluation guidance into this interview. Never mention packet
-routing, the packet library, dynamic variables, or the contents of an unselected packet to the candidate.""",
-            *packet_sections,
-        ]
-    )
-
-
 async def provider_json(
     client: httpx.AsyncClient,
     method: str,

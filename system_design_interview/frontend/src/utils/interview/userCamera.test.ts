@@ -4,7 +4,6 @@ import {
   hasLiveVideoTrack,
   isMissingUserCameraError,
   requestUserCamera,
-  setMediaStreamVideoEnabled,
   stopMediaStream,
   userCameraErrorMessage
 } from "@/utils/interview/userCamera";
@@ -44,28 +43,7 @@ describe("stopMediaStream", () => {
   });
 });
 
-describe("camera track toggling", () => {
-  it("disables and re-enables video tracks without stopping them", () => {
-    const tracks = [
-      { enabled: true, readyState: "live", stop: vi.fn() },
-      { enabled: true, readyState: "live", stop: vi.fn() }
-    ];
-    const stream = {
-      getVideoTracks: () => tracks
-    } as unknown as MediaStream;
-
-    setMediaStreamVideoEnabled(stream, false);
-
-    expect(tracks.every((track) => !track.enabled)).toBe(true);
-    expect(tracks.every((track) => !track.stop.mock.calls.length)).toBe(true);
-    expect(hasLiveVideoTrack(stream)).toBe(true);
-
-    setMediaStreamVideoEnabled(stream, true);
-
-    expect(tracks.every((track) => track.enabled)).toBe(true);
-    expect(tracks.every((track) => !track.stop.mock.calls.length)).toBe(true);
-  });
-
+describe("hasLiveVideoTrack", () => {
   it("does not reuse a stream whose video tracks have ended", () => {
     const stream = {
       getVideoTracks: () => [{ readyState: "ended" }]

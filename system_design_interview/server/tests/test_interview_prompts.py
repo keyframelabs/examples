@@ -16,7 +16,6 @@ from app.main import (
     INTERVIEW_PACKET_PLACEHOLDER,
     build_dynamic_elevenlabs_prompt,
     build_elevenlabs_agent_update_payload,
-    build_shared_elevenlabs_prompt,
     public_interview_metadata,
 )
 
@@ -218,8 +217,3 @@ def test_elevenlabs_payload_uses_one_conversation_packet_variable() -> None:
         "turn_timeout": 15,
         "turn_eagerness": "normal",
     }
-
-
-def test_shared_elevenlabs_prompt_requires_at_least_one_packet() -> None:
-    with pytest.raises(ValueError, match="At least one interview prompt is required"):
-        build_shared_elevenlabs_prompt({})

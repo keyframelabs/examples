@@ -10,24 +10,15 @@ import {
 } from "@/utils/avatar/personaViewRuntime";
 
 describe("sendPersonaContext", () => {
-  it("sends context through the PersonaView-owned voice agent when supported", () => {
+  it("sends context through the public PersonaView API", () => {
     const sendContext = vi.fn();
     const view = {
-      agent: { sendContext }
+      sendContext
     } as unknown as PersonaView;
 
     sendPersonaContext(view, "CanvasState update: 1");
 
     expect(sendContext).toHaveBeenCalledWith("CanvasState update: 1");
-  });
-
-  it("throws a clear error when PersonaView does not expose contextual updates", () => {
-    const view = {
-      agent: {}
-    } as unknown as PersonaView;
-
-    expect(() => sendPersonaContext(view, "CanvasState update: 1"))
-      .toThrow("PersonaView voice agent does not support contextual updates.");
   });
 });
 

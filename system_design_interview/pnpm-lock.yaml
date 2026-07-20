@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@keyframelabs/elements@0.5.1': 736872f1b023690132cb21889b0bc8a729e0d3ae307730ca8aea115ffeefc81b
-
 importers:
 
   .:
@@ -30,8 +27,8 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@keyframelabs/elements':
-        specifier: ^0.5.1
-        version: 0.5.1(patch_hash=736872f1b023690132cb21889b0bc8a729e0d3ae307730ca8aea115ffeefc81b)(@types/dom-mediacapture-record@1.0.22)
+        specifier: ^0.6.1
+        version: 0.6.1(@types/dom-mediacapture-record@1.0.22)
       '@radix-ui/react-scroll-area':
         specifier: ^1.2.9
         version: 1.2.14(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -467,8 +464,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@keyframelabs/elements@0.5.1':
-    resolution: {integrity: sha512-BqHUnJfFPHuW+aa95YwKQUS63rvY8sI2RzIkcIOALaAwd0iVrMvKqBdQ/HOs34Ptomeca2Ozk9KLgGVtgBODqw==}
+  '@keyframelabs/elements@0.6.1':
+    resolution: {integrity: sha512-zexvBO99YysxGPK+n6xCPMTkqq5iTNfxOSF7M56l+80uhtwjWDNoAj8zadJn3Z3DPVPm4oiSV8ftQISq+n+dSw==}
 
   '@keyframelabs/sdk@0.2.0':
     resolution: {integrity: sha512-aZ15tWyj1kkygLy6o1wc4GjqUAU+omjEyROaxqPnnG/nOJhPmQ74OGdJHC0qSqNYi8U3jejyQPGQbCxfQ5j7zQ==}
@@ -3064,7 +3061,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@keyframelabs/elements@0.5.1(patch_hash=736872f1b023690132cb21889b0bc8a729e0d3ae307730ca8aea115ffeefc81b)(@types/dom-mediacapture-record@1.0.22)':
+  '@keyframelabs/elements@0.6.1(@types/dom-mediacapture-record@1.0.22)':
     dependencies:
       '@keyframelabs/sdk': 0.2.0(@types/dom-mediacapture-record@1.0.22)
     transitivePeerDependencies:

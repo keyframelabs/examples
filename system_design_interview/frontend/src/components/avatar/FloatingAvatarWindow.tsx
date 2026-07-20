@@ -53,7 +53,6 @@ import {
   hasLiveVideoTrack,
   isMissingUserCameraError,
   requestUserCamera,
-  setMediaStreamVideoEnabled,
   stopMediaStream,
   userCameraErrorMessage
 } from "@/utils/interview/userCamera";
@@ -359,7 +358,6 @@ export function FloatingAvatarWindow({
     try {
       const existingStream = userCameraStreamRef.current;
       if (hasLiveVideoTrack(existingStream)) {
-        setMediaStreamVideoEnabled(existingStream, true);
         setCameraStream(existingStream);
         setCameraStatus("ready");
         return;
@@ -376,7 +374,6 @@ export function FloatingAvatarWindow({
         stopMediaStream(stream);
         return;
       }
-      setMediaStreamVideoEnabled(stream, true);
       const previousStream = userCameraStreamRef.current;
       userCameraStreamRef.current = stream;
       setCameraStream(stream);
@@ -406,7 +403,9 @@ export function FloatingAvatarWindow({
 
   function disableCamera() {
     const stream = userCameraStreamRef.current;
-    if (stream) setMediaStreamVideoEnabled(stream, false);
+    stopMediaStream(stream);
+    userCameraStreamRef.current = null;
+    setCameraStream(null);
     setCameraStatus("off");
     setCameraError(null);
   }

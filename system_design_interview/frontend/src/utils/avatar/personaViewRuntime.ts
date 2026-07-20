@@ -19,18 +19,12 @@ export type PersonaViewRuntime = {
 };
 
 type PersonaRuntimeAgent = {
-  sendContext?: (text: string) => void;
   on?: (event: "transcript", handler: (transcript: unknown) => void) => void;
   off?: (event: "transcript", handler: (transcript: unknown) => void) => void;
 };
 
 export function sendPersonaContext(view: PersonaView, text: string): void {
-  const agent = getPersonaRuntimeAgent(view);
-  if (!agent || typeof agent.sendContext !== "function") {
-    throw new Error("PersonaView voice agent does not support contextual updates.");
-  }
-
-  agent.sendContext(text);
+  view.sendContext(text);
 }
 
 export async function cleanupPersonaViewRuntime(runtime: PersonaViewRuntime): Promise<void> {

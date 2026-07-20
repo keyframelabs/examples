@@ -14,6 +14,12 @@ import {
   type KeyboardEvent
 } from "react";
 
+import {
+  getAvailableSkillLevels,
+  getInitialSkillLevel,
+  SKILL_LEVELS,
+  type SkillLevel
+} from "@/components/interview/interviewPacketSelection";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,9 +44,6 @@ import { cn } from "@/lib/utils";
 const LYRA_STILL_URL =
   "https://storage-public.keyframelabs.com/personas/b6dad089-2dd4-4012-9f6c-53b8aec8d4f5/cover.jpeg";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-const SKILL_LEVELS = ["Intern", "Junior", "Senior"] as const;
-
-type SkillLevel = InterviewPacket["skillLevel"];
 
 function shouldStartAutoplay() {
   return typeof window === "undefined"
@@ -81,6 +84,10 @@ export function InterviewPacketLanding({
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const autoplayStoppedByUser = useRef(!shouldStartAutoplay());
+  const availableSkillLevels = useMemo(
+    () => getAvailableSkillLevels(packets),
+    [packets]
+  );
   const visiblePackets = useMemo(
     () =>
       packets.filter((packet) => packet.skillLevel === activeSkillLevel),
@@ -99,11 +106,7 @@ export function InterviewPacketLanding({
         const loadedPackets = await getInterviewPackets(signal);
         if (signal.aborted) return;
         setPackets(loadedPackets);
-        setActiveSkillLevel(
-          SKILL_LEVELS.find((skillLevel) =>
-            loadedPackets.some((packet) => packet.skillLevel === skillLevel)
-          ) ?? "Intern"
-        );
+        setActiveSkillLevel(getInitialSkillLevel(loadedPackets));
         setSelectedIndex(0);
         setStatus("ready");
       } catch (loadError) {
@@ -194,7 +197,13 @@ export function InterviewPacketLanding({
   }
 
   function changeSkillLevel(value: string) {
-    if (!isSkillLevel(value) || value === activeSkillLevel) return;
+    if (
+      !isSkillLevel(value)
+      || !availableSkillLevels.has(value)
+      || value === activeSkillLevel
+    ) {
+      return;
+    }
     stopAutoplay();
     setCarouselApi(undefined);
     setSelectedIndex(0);
@@ -204,7 +213,7 @@ export function InterviewPacketLanding({
 
   return (
     <section className="h-screen overflow-y-auto bg-canvas-paper px-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-screen max-w-7xl -translate-y-4 flex-col justify-center border-x border-border/50 py-8 [zoom:1.1] sm:-translate-y-8 lg:-translate-y-12">
+      <div className="mx-auto flex min-h-[80vh] max-w-7xl flex-col justify-center border-x border-border/50 py-8 [zoom:1.25]">
         <header className="mx-auto mb-8 max-w-5xl text-center">
           <div className="mx-auto mb-4 size-36 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-40">
             <img
@@ -285,7 +294,11 @@ export function InterviewPacketLanding({
                   aria-label="Interview experience level"
                 >
                   {SKILL_LEVELS.map((skillLevel) => (
-                    <TabsTrigger key={skillLevel} value={skillLevel}>
+                    <TabsTrigger
+                      key={skillLevel}
+                      value={skillLevel}
+                      disabled={!availableSkillLevels.has(skillLevel)}
+                    >
                       {skillLevel}
                     </TabsTrigger>
                   ))}
@@ -398,6 +411,7 @@ export function InterviewPacketLanding({
                 type="button"
                 size="lg"
                 className="w-full max-w-sm font-semibold sm:w-auto sm:min-w-64"
+                disabled={!selectedPacket}
                 onClick={() =>
                   selectedPacket && onStartInterview(selectedPacket)
                 }

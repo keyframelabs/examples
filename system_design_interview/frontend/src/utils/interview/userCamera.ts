@@ -26,15 +26,6 @@ export function hasLiveVideoTrack(
     ?? false;
 }
 
-export function setMediaStreamVideoEnabled(
-  stream: MediaStream,
-  enabled: boolean
-): void {
-  stream.getVideoTracks().forEach((track) => {
-    track.enabled = enabled;
-  });
-}
-
 export function userCameraErrorMessage(error: unknown): string {
   const name = errorName(error);
 
