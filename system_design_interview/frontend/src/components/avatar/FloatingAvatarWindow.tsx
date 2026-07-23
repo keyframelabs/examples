@@ -12,7 +12,7 @@ import {
   Phone,
   PhoneOff
 } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect } from "react";
 
 import personSharpUrl from "@/assets/person-sharp.svg";
 import {
@@ -20,6 +20,11 @@ import {
   type InterviewStartup
 } from "@/components/avatar/useInterviewMediaSession";
 import { useFloatingPanel } from "@/components/avatar/useFloatingPanel";
+import {
+  measureCanvasRightOcclusion,
+  subscribeToViewportResize,
+  type CanvasRightOcclusion
+} from "@/components/canvas/fitView";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,6 +51,9 @@ type FloatingAvatarWindowProps = {
   onEnterCanvas: () => void;
   onReturnToSelection: () => void;
   onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
+  onCanvasRightOcclusionChange?: (
+    occlusion: CanvasRightOcclusion | null
+  ) => void;
 };
 
 export function FloatingAvatarWindow({
@@ -55,7 +63,8 @@ export function FloatingAvatarWindow({
   stage,
   onEnterCanvas,
   onReturnToSelection,
-  onCanvasSyncStatusChange
+  onCanvasSyncStatusChange,
+  onCanvasRightOcclusionChange
 }: FloatingAvatarWindowProps) {
   const {
     panelRef,
@@ -112,6 +121,35 @@ export function FloatingAvatarWindow({
   useEffect(() => {
     onCanvasSyncStatusChange?.(canvasSyncStatus);
   }, [canvasSyncStatus, onCanvasSyncStatusChange]);
+
+  const reportCanvasRightOcclusion = useCallback(() => {
+    if (stage !== "canvas") {
+      onCanvasRightOcclusionChange?.(null);
+      return;
+    }
+
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const occlusion = measureCanvasRightOcclusion(rect, window.innerWidth);
+    if (occlusion) onCanvasRightOcclusionChange?.(occlusion);
+  }, [onCanvasRightOcclusionChange, panelRef, stage]);
+
+  useLayoutEffect(() => {
+    reportCanvasRightOcclusion();
+  }, [
+    minimized,
+    panelSize.height,
+    panelSize.width,
+    position.x,
+    position.y,
+    reportCanvasRightOcclusion
+  ]);
+
+  useEffect(() => {
+    if (stage !== "canvas") return;
+    return subscribeToViewportResize(window, reportCanvasRightOcclusion);
+  }, [reportCanvasRightOcclusion, stage]);
 
   const intro = stage === "introduction";
 
@@ -205,7 +243,7 @@ export function FloatingAvatarWindow({
                 ? "mx-auto w-full max-w-[814px] translate-y-0 rounded-xl border-border/80 sm:translate-y-8"
                 : minimized
                   ? "max-w-[calc(100vw-24px)] rounded-lg"
-                  : "w-[min(404px,calc(100vw-24px))] max-w-[min(404px,calc(100vw-24px))] max-h-[calc(100vh-68px)] rounded-lg"
+                  : "w-[min(404px,calc(100vw-24px))] max-w-[min(404px,calc(100vw-24px))] rounded-lg"
             )}
           >
             {!intro ? (

@@ -215,7 +215,7 @@ export function InterviewPacketLanding({
     <section className="h-screen overflow-y-auto bg-canvas-paper px-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[80vh] max-w-7xl flex-col justify-center border-x border-border/50 py-8 [zoom:1.25]">
         <header className="mx-auto mb-8 max-w-5xl text-center">
-          <div className="mx-auto mb-4 size-36 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-40">
+          <div className="mx-auto mb-4 size-44 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-52">
             <img
               src={LYRA_STILL_URL}
               alt="Lyra, your AI system design interviewer"

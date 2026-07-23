@@ -6,8 +6,9 @@ import {
   type InterviewStartup
 } from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
-import { createEmptyCanvasState } from "@/components/canvas/model/state";
-import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
+import type { CanvasRightOcclusion } from "@/components/canvas/fitView";
+import { createCanvasSessionDefaults } from "@/components/canvas/model/interviewCanvasTemplates";
+import type { CanvasState } from "@/components/canvas/model/types";
 import { InterviewPacketLanding } from "@/components/interview/InterviewPacketLanding";
 import {
   createLiveSession,
@@ -23,7 +24,7 @@ import {
 } from "@/utils/sessionLossWarning";
 import { requestUserCamera } from "@/utils/interview/userCamera";
 
-const EMPTY_CANVAS_TEXT = serializeCanvasToText(createEmptyCanvasState()).text;
+const INITIAL_CANVAS_SESSION = createCanvasSessionDefaults();
 
 type InterviewStage = "selection" | "introduction" | "canvas";
 
@@ -40,10 +41,17 @@ export function App() {
   const [interviewStartup, setInterviewStartup] =
     useState<InterviewStartup | null>(null);
   const [canvasSessionId, setCanvasSessionId] = useState(0);
-  const [canvasText, setCanvasText] = useState(EMPTY_CANVAS_TEXT);
+  const [canvasInitialState, setCanvasInitialState] = useState<CanvasState>(
+    INITIAL_CANVAS_SESSION.initialState
+  );
+  const [canvasText, setCanvasText] = useState(
+    INITIAL_CANVAS_SESSION.canvasText
+  );
   const [hasCanvasEdits, setHasCanvasEdits] = useState(false);
   const [canvasSyncStatus, setCanvasSyncStatus] =
     useState<CanvasSyncStatus>(INITIAL_CANVAS_SYNC_STATUS);
+  const [canvasRightOcclusion, setCanvasRightOcclusion] =
+    useState<CanvasRightOcclusion | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const currentCanvasSessionIdRef = useRef(canvasSessionId);
   currentCanvasSessionIdRef.current = canvasSessionId;
@@ -61,16 +69,20 @@ export function App() {
   );
 
   const handleReturnToSelection = useCallback(() => {
+    const emptyCanvasSession = createCanvasSessionDefaults();
     setInterviewStage("selection");
     setSelectedPacket(null);
     setInterviewStartup(null);
     setCanvasSessionId((current) => current + 1);
-    setCanvasText(EMPTY_CANVAS_TEXT);
+    setCanvasInitialState(emptyCanvasSession.initialState);
+    setCanvasText(emptyCanvasSession.canvasText);
     setHasCanvasEdits(false);
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
+    setCanvasRightOcclusion(null);
   }, []);
 
   const handleStartInterview = useCallback((packet: InterviewPacket) => {
+    const nextCanvasSession = createCanvasSessionDefaults(packet.packetId);
     const cameraRequest = requestUserCamera();
     const liveSessionRequest = createLiveSession(packet.packetId);
     void cameraRequest.catch(() => undefined);
@@ -83,6 +95,11 @@ export function App() {
 
     setSelectedPacket(packet);
     setInterviewStartup(startup);
+    setCanvasSessionId((current) => current + 1);
+    setCanvasInitialState(nextCanvasSession.initialState);
+    setCanvasText(nextCanvasSession.canvasText);
+    setHasCanvasEdits(false);
+    setCanvasRightOcclusion(null);
     setInterviewStage(INTERVIEW_ENTRY_STAGE);
   }, []);
 
@@ -112,7 +129,9 @@ export function App() {
         <SystemDesignCanvas
           key={canvasSessionId}
           className="h-full"
+          initialState={canvasInitialState}
           isInteractive={interviewStage === "canvas"}
+          rightOcclusion={canvasRightOcclusion}
           onCanvasDirtyChange={setHasCanvasEdits}
           onCanvasTextChange={handleCanvasTextChange}
           toolbarEnd={
@@ -138,6 +157,7 @@ export function App() {
           onEnterCanvas={() => setInterviewStage("canvas")}
           onReturnToSelection={handleReturnToSelection}
           onCanvasSyncStatusChange={setCanvasSyncStatus}
+          onCanvasRightOcclusionChange={setCanvasRightOcclusion}
         />
       ) : null}
     </main>

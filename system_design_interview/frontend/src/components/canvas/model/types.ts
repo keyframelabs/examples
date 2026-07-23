@@ -76,6 +76,8 @@ export interface CanvasConnection {
   fromFieldSide?: CanvasFieldSide;
   toFieldSide?: CanvasFieldSide;
   cardinality?: CanvasConnectionCardinality;
+  routingOffset?: number;
+  labelSize?: "default" | "large";
   label: string;
   alias?: string;
 }

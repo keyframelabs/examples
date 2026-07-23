@@ -5,7 +5,9 @@ import {
   resolveCanvasCollisions
 } from "@/components/canvas/model/collisions";
 import {
+  connectionLabelDimensions,
   connectionLabelRect,
+  connectionRoutingOffset,
   CONNECTION_LABEL_COLLISION_GAP
 } from "@/components/canvas/flow/connectionLabels";
 import {
@@ -17,6 +19,16 @@ import {
 import { isNode } from "@/components/canvas/model/types";
 
 describe("canvas collision settling", () => {
+  it("preserves default connection routing and label dimensions", () => {
+    const connection = createConnection("source", "target", "Request");
+
+    expect(connectionRoutingOffset(connection)).toBe(32);
+    expect(connectionLabelDimensions(connection)).toEqual({
+      width: 95,
+      height: 26
+    });
+  });
+
   it("separates overlapping nodes while preserving the pinned node", () => {
     const pinned = createNode("service", 0, 0, {
       id: "pinned",

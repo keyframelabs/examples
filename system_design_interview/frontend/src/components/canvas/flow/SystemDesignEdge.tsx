@@ -19,7 +19,10 @@ import {
   type SystemFlowEdge,
   type SystemFlowNode
 } from "@/components/canvas/flow/adapters";
-import { connectionLabelWidth } from "@/components/canvas/flow/connectionLabels";
+import {
+  connectionLabelDimensions,
+  connectionRoutingOffset
+} from "@/components/canvas/flow/connectionLabels";
 import { handleTextEditorKeyDown } from "@/components/canvas/flow/textEditing";
 
 type Point = { x: number; y: number };
@@ -53,6 +56,8 @@ function SystemDesignEdgeComponent({
   const [fromTerminal, toTerminal] = cardinalityTerminals(
     data.connection.cardinality
   );
+  const labelDimensions = connectionLabelDimensions(data.connection);
+  const largeLabel = data.connection.labelSize === "large";
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
   const pathSource = data.isTableRelationship
@@ -69,7 +74,7 @@ function SystemDesignEdgeComponent({
     targetY: pathTarget.y,
     targetPosition,
     borderRadius: 12,
-    offset: 32
+    offset: connectionRoutingOffset(data.connection)
   });
 
   return (
@@ -118,9 +123,10 @@ function SystemDesignEdgeComponent({
           >
             <input
               aria-label="Connection label"
-              className="nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center text-xs font-medium text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className={`nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center font-medium text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20 ${largeLabel ? "text-base" : "text-xs"}`}
               style={{
-                width: connectionLabelWidth(data.connection.label),
+                width: labelDimensions.width,
+                height: labelDimensions.height,
                 boxShadow:
                   "0 0 0 3px var(--canvas-paper), 0 2px 5px rgb(0 0 0 / 0.14)"
               }}

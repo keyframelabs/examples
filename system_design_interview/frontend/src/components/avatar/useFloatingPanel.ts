@@ -24,6 +24,11 @@ type PanelSize = {
   height: number;
 };
 
+type ViewportSize = {
+  width: number;
+  height: number;
+};
+
 type ResizeState = {
   pointerId: number;
   startClient: Position;
@@ -38,7 +43,14 @@ const PANEL_ASPECT_RATIO = PANEL_WIDTH / PANEL_HEIGHT;
 const INITIAL_PANEL_WIDTH = 280;
 const MIN_PANEL_WIDTH = 240;
 const MINIMIZED_HEIGHT = 40;
-const CANVAS_TOP_CONTROLS_BOUNDARY = 56;
+const VIEWPORT_MARGIN = 12;
+const INITIAL_HORIZONTAL_INSET = VIEWPORT_MARGIN * 2;
+const CANVAS_TOP_CONTROLS_TOP = 16;
+const CANVAS_TOP_CONTROLS_HEIGHT = 50;
+const CANVAS_TOP_CONTROLS_BOTTOM =
+  CANVAS_TOP_CONTROLS_TOP + CANVAS_TOP_CONTROLS_HEIGHT;
+const CANVAS_TOP_CONTROLS_CLEARANCE =
+  CANVAS_TOP_CONTROLS_BOTTOM + VIEWPORT_MARGIN;
 
 export function useFloatingPanel(stage: InterviewStage) {
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -59,33 +71,17 @@ export function useFloatingPanel(stage: InterviewStage) {
   useEffect(() => {
     if (stage !== "canvas") return;
 
-    const currentPanelSize = getPanelSize();
-    setPosition((current) =>
-      clampPosition(
-        current,
-        currentPanelSize.width,
-        currentPanelSize.height
-      )
-    );
+    reconcilePanelLayout();
   }, [minimized, stage]);
 
   useEffect(() => {
     function handleResize() {
-      if (stage !== "canvas") return;
-
-      const currentPanelSize = getPanelSize();
-      setPosition((current) =>
-        clampPosition(
-          current,
-          currentPanelSize.width,
-          currentPanelSize.height
-        )
-      );
+      reconcilePanelLayout();
     }
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [minimized, stage]);
+  }, [minimized, panelSize]);
 
   useEffect(
     () => () => {
@@ -295,8 +291,8 @@ export function useFloatingPanel(stage: InterviewStage) {
   ): PanelSize {
     const maxWidth = Math.min(
       PANEL_WIDTH,
-      Math.max(1, anchorRight - 12),
-      Math.max(1, window.innerHeight - top - 12) * aspectRatio
+      Math.max(1, anchorRight - VIEWPORT_MARGIN),
+      Math.max(1, window.innerHeight - top - VIEWPORT_MARGIN) * aspectRatio
     );
     const width = clamp(
       targetWidth,
@@ -333,6 +329,28 @@ export function useFloatingPanel(stage: InterviewStage) {
       : panelSize;
   }
 
+  function reconcilePanelLayout() {
+    const viewport = getViewportSize();
+    if (!viewport) return;
+
+    const nextPanelSize = fitPanelSizeToViewport(panelSize, viewport);
+    if (
+      nextPanelSize.width !== panelSize.width ||
+      nextPanelSize.height !== panelSize.height
+    ) {
+      setPanelSize(nextPanelSize);
+    }
+
+    setPosition((current) =>
+      clampPosition(
+        current,
+        nextPanelSize.width,
+        minimized ? MINIMIZED_HEIGHT : nextPanelSize.height,
+        viewport
+      )
+    );
+  }
+
   return {
     panelRef,
     panelSize,
@@ -349,56 +367,93 @@ export function useFloatingPanel(stage: InterviewStage) {
   };
 }
 
-function initialPanelSize(): PanelSize {
-  if (typeof window === "undefined") {
-    return {
-      width: INITIAL_PANEL_WIDTH,
-      height: INITIAL_PANEL_WIDTH / PANEL_ASPECT_RATIO
-    };
+export function initialPanelSize(viewport = getViewportSize()): PanelSize {
+  const preferredSize = {
+    width: INITIAL_PANEL_WIDTH,
+    height: INITIAL_PANEL_WIDTH / PANEL_ASPECT_RATIO
+  };
+
+  if (!viewport) {
+    return preferredSize;
   }
 
-  const maxWidth = Math.min(
-    PANEL_WIDTH,
-    Math.max(1, window.innerWidth - 24),
-    Math.max(1, window.innerHeight - CANVAS_TOP_CONTROLS_BOUNDARY - 12) *
-      PANEL_ASPECT_RATIO
-  );
-  const width = Math.min(INITIAL_PANEL_WIDTH, maxWidth);
-
-  return { width, height: width / PANEL_ASPECT_RATIO };
+  return fitPanelSizeToViewport(preferredSize, viewport);
 }
 
-function initialPosition(width: number, height: number): Position {
-  if (typeof window === "undefined") {
-    return { x: 24, y: CANVAS_TOP_CONTROLS_BOUNDARY };
+export function fitPanelSizeToViewport(
+  size: PanelSize,
+  viewport: ViewportSize
+): PanelSize {
+  const aspectRatio = size.width / size.height;
+  const maxWidth = Math.min(
+    PANEL_WIDTH,
+    Math.max(1, viewport.width - INITIAL_HORIZONTAL_INSET),
+    Math.max(
+      1,
+      viewport.height - CANVAS_TOP_CONTROLS_CLEARANCE - VIEWPORT_MARGIN
+    ) *
+      aspectRatio
+  );
+  const width = clamp(
+    size.width,
+    Math.min(MIN_PANEL_WIDTH, maxWidth),
+    maxWidth
+  );
+
+  return { width, height: width / aspectRatio };
+}
+
+export function initialPosition(
+  width: number,
+  height: number,
+  viewport = getViewportSize()
+): Position {
+  if (!viewport) {
+    return {
+      x: INITIAL_HORIZONTAL_INSET,
+      y: CANVAS_TOP_CONTROLS_CLEARANCE
+    };
   }
 
   return clampPosition(
     {
-      x: window.innerWidth - width - 24,
-      y: CANVAS_TOP_CONTROLS_BOUNDARY
+      x: viewport.width - width - INITIAL_HORIZONTAL_INSET,
+      y: CANVAS_TOP_CONTROLS_CLEARANCE
     },
     width,
-    height
+    height,
+    viewport
   );
 }
 
-function clampPosition(
+export function clampPosition(
   position: Position,
   width: number,
-  height: number
+  height: number,
+  viewport = getViewportSize()
 ): Position {
-  if (typeof window === "undefined") return position;
+  if (!viewport) return position;
 
-  const margin = 12;
-  const maxX = Math.max(margin, window.innerWidth - width - margin);
-  const minY = CANVAS_TOP_CONTROLS_BOUNDARY;
-  const maxY = Math.max(minY, window.innerHeight - height - margin);
+  const maxX = Math.max(
+    VIEWPORT_MARGIN,
+    viewport.width - width - VIEWPORT_MARGIN
+  );
+  const minY = CANVAS_TOP_CONTROLS_CLEARANCE;
+  const maxY = Math.max(
+    minY,
+    viewport.height - height - VIEWPORT_MARGIN
+  );
 
   return {
-    x: clamp(position.x, margin, maxX),
+    x: clamp(position.x, VIEWPORT_MARGIN, maxX),
     y: clamp(position.y, minY, maxY)
   };
+}
+
+function getViewportSize(): ViewportSize | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  return { width: window.innerWidth, height: window.innerHeight };
 }
 
 function clamp(value: number, min: number, max: number): number {

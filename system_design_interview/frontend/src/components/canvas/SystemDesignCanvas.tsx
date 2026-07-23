@@ -12,6 +12,7 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
   type OnReconnect,
+  type FitViewOptions,
   type ReactFlowInstance
 } from "@xyflow/react";
 import {
@@ -47,6 +48,11 @@ import {
   type CanvasSelectionChange
 } from "@/components/canvas/flow/selection";
 import {
+  createCanvasFitViewOptions,
+  runInitialCanvasFit,
+  type CanvasRightOcclusion
+} from "@/components/canvas/fitView";
+import {
   SystemDesignConnectionLine,
   SystemDesignEdge
 } from "@/components/canvas/flow/SystemDesignEdge";
@@ -75,6 +81,7 @@ export interface SystemDesignCanvasProps {
   onCanvasChange?: (state: CanvasState) => void;
   onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
+  rightOcclusion?: CanvasRightOcclusion | null;
   toolbarEnd?: ReactNode;
 }
 
@@ -89,6 +96,7 @@ export function SystemDesignCanvas({
   onCanvasChange,
   onCanvasDirtyChange,
   onCanvasTextChange,
+  rightOcclusion = null,
   toolbarEnd
 }: SystemDesignCanvasProps) {
   const {
@@ -109,6 +117,8 @@ export function SystemDesignCanvas({
   const [autoFocusNodeId, setAutoFocusNodeId] = useState<string | null>(null);
   const [cardinalityMenu, setCardinalityMenu] =
     useState<CardinalityMenuState | null>(null);
+  const [flowInstance, setFlowInstance] =
+    useState<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
   const flowInstanceRef =
     useRef<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
@@ -120,7 +130,27 @@ export function SystemDesignCanvas({
   const pendingCanvasTextFlushRef = useRef<(() => void) | null>(null);
   const latestCanvasTextStateRef = useRef(state);
   const latestCanvasTextChangeRef = useRef(onCanvasTextChange);
+  const isTextEditingRef = useRef(false);
+  const hasHandledInitialFitRef = useRef(false);
   stateRef.current = state;
+
+  const scheduleCanvasTextChange = useCallback(() => {
+    if (
+      !latestCanvasTextChangeRef.current
+      || pendingCanvasTextFlushRef.current
+    ) {
+      return;
+    }
+
+    pendingCanvasTextFlushRef.current = scheduleCanvasTextSerialization(() => {
+      pendingCanvasTextFlushRef.current = null;
+      const callback = latestCanvasTextChangeRef.current;
+      if (!callback) return;
+
+      const serialized = serializeCanvasToText(latestCanvasTextStateRef.current);
+      callback(serialized.text, serialized.metadata);
+    });
+  }, []);
 
   useEffect(() => {
     onCanvasChange?.(state);
@@ -140,17 +170,14 @@ export function SystemDesignCanvas({
       return;
     }
 
-    if (pendingCanvasTextFlushRef.current) return;
-
-    pendingCanvasTextFlushRef.current = scheduleCanvasTextSerialization(() => {
+    if (isTextEditingRef.current) {
+      pendingCanvasTextFlushRef.current?.();
       pendingCanvasTextFlushRef.current = null;
-      const callback = latestCanvasTextChangeRef.current;
-      if (!callback) return;
+      return;
+    }
 
-      const serialized = serializeCanvasToText(latestCanvasTextStateRef.current);
-      callback(serialized.text, serialized.metadata);
-    });
-  }, [onCanvasTextChange, state]);
+    scheduleCanvasTextChange();
+  }, [onCanvasTextChange, scheduleCanvasTextChange, state]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -340,13 +367,18 @@ export function SystemDesignCanvas({
   );
 
   const handleEditStart = useCallback(() => {
+    isTextEditingRef.current = true;
+    pendingCanvasTextFlushRef.current?.();
+    pendingCanvasTextFlushRef.current = null;
     beginInteraction();
   }, [beginInteraction]);
 
   const handleEditEnd = useCallback(() => {
+    isTextEditingRef.current = false;
     applyEphemeral({ type: "settle-collisions" });
     finishInteraction();
-  }, [applyEphemeral, finishInteraction]);
+    scheduleCanvasTextChange();
+  }, [applyEphemeral, finishInteraction, scheduleCanvasTextChange]);
 
   const handleEditComplete = useCallback(() => {
     setAutoFocusNodeId(null);
@@ -562,6 +594,24 @@ export function SystemDesignCanvas({
     ]
   );
 
+  const fitViewOptions: FitViewOptions<SystemFlowNode> = useMemo(
+    () => createCanvasFitViewOptions(rightOcclusion),
+    [rightOcclusion]
+  );
+
+  useEffect(() => {
+    if (!flowInstance) return;
+
+    runInitialCanvasFit({
+      handledRef: hasHandledInitialFitRef,
+      occlusion: rightOcclusion,
+      expectedNodeCount: flowElements.nodes.length,
+      nodes: flowInstance.getNodes(),
+      fitViewOptions,
+      fitView: (options) => void flowInstance.fitView(options)
+    });
+  }, [fitViewOptions, flowElements.nodes, flowInstance, rightOcclusion]);
+
   return (
     <section
       ref={rootRef}
@@ -592,6 +642,7 @@ export function SystemDesignCanvas({
         maxZoom={2.5}
         onInit={(instance) => {
           flowInstanceRef.current = instance;
+          setFlowInstance(instance);
         }}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
@@ -632,6 +683,7 @@ export function SystemDesignCanvas({
         <Controls
           position="bottom-left"
           showInteractive={false}
+          fitViewOptions={fitViewOptions}
           className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
         />
       </ReactFlow>
