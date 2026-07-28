@@ -62,7 +62,6 @@ describe("interview canvas templates", () => {
       "User",
       "Load Balancer",
       "URL Service",
-      "Cache",
       "SQL Primary",
       "URL Map"
     ]);
@@ -70,12 +69,11 @@ describe("interview canvas templates", () => {
       { id: "tinyurl_client", alias: "user" },
       { id: "tinyurl_load_balancer", alias: "load_balancer" },
       { id: "tinyurl_api_redirect", alias: "url_service" },
-      { id: "tinyurl_cache", alias: "cache" },
       { id: "tinyurl_sql_primary", alias: "sql_primary" },
       { id: "tinyurl_url_mappings", alias: "url_map" }
     ]);
-    expect(connections).toHaveLength(8);
-    expect(state.order).toHaveLength(14);
+    expect(connections).toHaveLength(6);
+    expect(state.order).toHaveLength(11);
     expect(state.selectedIds).toEqual([]);
     expect(nodeByLabel.get("User")?.kind).toBe("actor");
 
@@ -98,7 +96,7 @@ describe("interview canvas templates", () => {
 
     const stateText = JSON.stringify(state);
     expect(stateText).not.toMatch(
-      /SQL Replica|sql_replica|owner_id|status|Analytics|Event Stream|click events?|workers|analytics storage|callout/i
+      /Cache|SQL Replica|sql_replica|owner_id|status|Analytics|Event Stream|click events?|workers|analytics storage|callout/i
     );
     expect(stateText.match(/301 Redirect/g)).toHaveLength(1);
     expect(stateText).not.toContain("302");
@@ -163,33 +161,15 @@ describe("interview canvas templates", () => {
     );
   });
 
-  it("models the reference cache lookup, database miss, and table write paths", () => {
+  it("models the direct database lookup and table write paths", () => {
     const { connections, nodeByLabel } = canvasParts();
-    const lookup = expectConnection(
-      connections,
-      nodeByLabel,
-      "URL Service",
-      "Cache",
-      "Lookup",
-      "right",
-      "left"
-    );
-    const hit = expectConnection(
-      connections,
-      nodeByLabel,
-      "Cache",
-      "URL Service",
-      "Cache Hit",
-      "top",
-      "top-right"
-    );
     expectConnection(
       connections,
       nodeByLabel,
       "URL Service",
       "SQL Primary",
-      "Cache Miss",
-      "bottom-right",
+      "Lookup",
+      "right",
       "left"
     );
     expectConnection(
@@ -209,22 +189,19 @@ describe("interview canvas templates", () => {
         label: "Cache Miss"
       })
     );
-    expect(connectionPath(lookup, nodeByLabel)).not.toBe(
-      connectionPath(hit, nodeByLabel)
-    );
+    expect(nodeByLabel.has("Cache")).toBe(false);
   });
 
   it("opts only the reference labels and return loops into larger presentation", () => {
     const { connections, nodeByLabel, nodes } = canvasParts();
     const loops = new Map([
       ["Long URL Redirect", -16],
-      ["301 Redirect", 16],
-      ["Cache Hit", -16]
+      ["301 Redirect", 16]
     ]);
     const nodesById = nodeByLabelById(nodes);
 
     expect(connections.map((connection) => connection.labelSize)).toEqual(
-      Array.from({ length: 8 }, () => "large")
+      Array.from({ length: 6 }, () => "large")
     );
     for (const connection of connections) {
       expect(connectionRoutingOffset(connection)).toBe(
@@ -279,7 +256,6 @@ describe("interview canvas templates", () => {
         "actor user: User",
         "service load_balancer: Load Balancer",
         "service url_service: URL Service",
-        "database cache: Cache",
         "database sql_primary: SQL Primary",
         "Tables:",
         "sql_primary.url_map<SQL>(short_code pk, long_url, created_at, expires_at)",
@@ -288,14 +264,12 @@ describe("interview canvas templates", () => {
         "load_balancer -> user: Long URL Redirect",
         "load_balancer -> url_service: Route",
         "url_service -> load_balancer: 301 Redirect",
-        "url_service -> cache: Lookup",
-        "cache -> url_service: Cache Hit",
-        "url_service -> sql_primary: Cache Miss",
+        "url_service -> sql_primary: Lookup",
         "url_service -> sql_primary.url_map: Write"
       ].join("\n")
     );
     expect(first.canvasText).not.toMatch(
-      /SQL Replica|sql_replica|owner_id|status|Analytics|Event Stream|click events?|workers|analytics storage|callout/i
+      /Cache|SQL Replica|sql_replica|owner_id|status|Analytics|Event Stream|click events?|workers|analytics storage|callout/i
     );
     expect(first.canvasText.match(/301 Redirect/g)).toHaveLength(1);
     expect(first.canvasText).not.toContain("302");
@@ -312,8 +286,7 @@ describe("interview canvas templates", () => {
       User: { x: -107, y: 18, width: 160, height: 104 },
       "Load Balancer": { x: 353, y: 8, width: 222, height: 134 },
       "URL Service": { x: 928, y: 8, width: 220, height: 132 },
-      Cache: { x: 1453, y: -7, width: 230, height: 159 },
-      "SQL Primary": { x: 1453, y: 238, width: 240, height: 158 },
+      "SQL Primary": { x: 1453, y: -7, width: 240, height: 158 },
       "URL Map": { x: 863, y: 558, width: 352, height: 260 }
     };
 
@@ -357,9 +330,7 @@ describe("interview canvas templates", () => {
       "Long URL Redirect": { x: 99.5, y: -63, width: 207, height: 36 },
       Route: { x: 684, y: 56.5, width: 135, height: 36 },
       "301 Redirect": { x: 674, y: 177, width: 155, height: 36 },
-      Lookup: { x: 1233, y: 55.25, width: 135, height: 36 },
-      "Cache Hit": { x: 1290.5, y: -78, width: 135, height: 36 },
-      "Cache Miss": { x: 1214.5, y: 299, width: 135, height: 36 },
+      Lookup: { x: 1233, y: 55, width: 135, height: 36 },
       Write: { x: 971, y: 331, width: 135, height: 36 }
     };
     for (const { connection, rect } of labelRects) {

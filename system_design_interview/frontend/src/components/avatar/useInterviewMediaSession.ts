@@ -27,7 +27,7 @@ import {
 
 export type InterviewStartup = {
   cameraRequest: Promise<MediaStream>;
-  liveSessionRequest: Promise<LiveSessionResponse>;
+  liveSessionRequest?: Promise<LiveSessionResponse>;
 };
 
 export type CameraStatus =
@@ -111,7 +111,11 @@ export function useInterviewMediaSession({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      void joinInterview(startup);
+      if (startup.liveSessionRequest) {
+        void joinInterview(startup);
+      } else {
+        void enableCamera(startup.cameraRequest);
+      }
     });
 
     return () => window.cancelAnimationFrame(frame);

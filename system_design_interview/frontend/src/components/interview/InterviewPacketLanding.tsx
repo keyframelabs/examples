@@ -74,7 +74,7 @@ export function InterviewPacketLanding({
       delay: 2000,
       playOnInit: shouldStartAutoplay(),
       stopOnInteraction: true,
-      stopOnMouseEnter: true
+      stopOnMouseEnter: false
     })
   );
   const carouselPlugins = useMemo(
@@ -131,13 +131,18 @@ export function InterviewPacketLanding({
       setIsAutoplayPlaying(autoplayPlugin.isPlaying());
     };
 
-    if (autoplayStoppedByUser.current) autoplayPlugin.stop();
     syncSelectedPacket();
-    syncAutoplay();
     carouselApi.on("select", syncSelectedPacket);
     carouselApi.on("reInit", syncSelectedPacket);
     carouselApi.on("autoplay:play", syncAutoplay);
     carouselApi.on("autoplay:stop", syncAutoplay);
+
+    if (autoplayStoppedByUser.current) {
+      autoplayPlugin.stop();
+    } else {
+      autoplayPlugin.play();
+    }
+    syncAutoplay();
 
     return () => {
       carouselApi.off("select", syncSelectedPacket);
@@ -298,6 +303,7 @@ export function InterviewPacketLanding({
                       key={skillLevel}
                       value={skillLevel}
                       disabled={!availableSkillLevels.has(skillLevel)}
+                      onClick={stopAutoplay}
                     >
                       {skillLevel}
                     </TabsTrigger>

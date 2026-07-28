@@ -86,7 +86,6 @@ export function FloatingAvatarWindow({
     isConnecting,
     isConnected,
     isEndingCall,
-    hasEndedCall,
     avatarError,
     cameraError,
     cameraStatus,
@@ -407,23 +406,8 @@ export function FloatingAvatarWindow({
                     className="h-full w-full overflow-hidden [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
                   />
                   {!isConnected ? (
-                    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
+                    <div className="absolute inset-0 overflow-hidden bg-canvas-avatar-surface">
                       <PersonPlaceholder />
-                      <div
-                        className="relative z-10 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground shadow-lg"
-                        role="status"
-                      >
-                        {isConnecting ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : null}
-                        {avatarError
-                          ? "Lyra is unavailable"
-                          : isConnecting
-                            ? "Lyra is joining"
-                            : hasEndedCall
-                              ? "Call ended"
-                              : "Preparing Lyra"}
-                      </div>
                     </div>
                   ) : null}
                   <TooltipProvider delayDuration={250}>
@@ -477,19 +461,20 @@ export function FloatingAvatarWindow({
                   }
                   disabled={
                     !isConnected &&
-                    (!avatarError ||
-                      isConnecting ||
-                      cameraStatus === "requesting")
+                    (isConnecting || cameraStatus === "requesting")
                   }
                 >
-                  {!isConnected && !avatarError ? (
+                  {!isConnected &&
+                  (isConnecting || cameraStatus === "requesting") ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : null}
                   {isConnected
                     ? "Open design canvas"
                     : avatarError
                       ? "Retry interview"
-                      : "Starting interview"}
+                      : isConnecting || cameraStatus === "requesting"
+                        ? "Starting interview"
+                        : "Start interview"}
                   {isConnected ? <ChevronRight className="size-4" /> : null}
                 </Button>
               </div>

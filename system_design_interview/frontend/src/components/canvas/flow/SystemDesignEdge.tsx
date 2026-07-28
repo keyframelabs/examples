@@ -123,7 +123,7 @@ function SystemDesignEdgeComponent({
           >
             <input
               aria-label="Connection label"
-              className={`nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center font-medium text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20 ${largeLabel ? "text-base" : "text-xs"}`}
+              className={`nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center font-medium leading-none text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20 ${largeLabel ? "text-lg" : "text-sm"}`}
               style={{
                 width: labelDimensions.width,
                 height: labelDimensions.height,

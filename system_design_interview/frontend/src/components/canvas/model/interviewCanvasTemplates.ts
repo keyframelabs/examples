@@ -55,14 +55,7 @@ export function createTinyUrlCanvasState(): CanvasState {
     width: 220,
     height: 132
   });
-  const cache = createNode("database", 1453, -7, {
-    id: "tinyurl_cache",
-    label: "Cache",
-    alias: "cache",
-    width: 230,
-    height: 159
-  });
-  const primaryDatabase = createNode("database", 1453, 238, {
+  const primaryDatabase = createNode("database", 1453, -7, {
     id: "tinyurl_sql_primary",
     label: "SQL Primary",
     alias: "sql_primary",
@@ -92,7 +85,6 @@ export function createTinyUrlCanvasState(): CanvasState {
     user,
     loadBalancer,
     urlService,
-    cache,
     primaryDatabase,
     urlMappings
   ];
@@ -132,28 +124,11 @@ export function createTinyUrlCanvasState(): CanvasState {
       48
     ),
     templateConnection(
-      "tinyurl_conn_api_cache_lookup",
-      urlService.id,
-      cache.id,
-      "Lookup",
-      "right",
-      "left"
-    ),
-    templateConnection(
-      "tinyurl_conn_cache_api_hit",
-      cache.id,
-      urlService.id,
-      "Cache Hit",
-      "top",
-      "top-right",
-      48
-    ),
-    templateConnection(
-      "tinyurl_conn_api_primary_miss",
+      "tinyurl_conn_api_primary_lookup",
       urlService.id,
       primaryDatabase.id,
-      "Cache Miss",
-      "bottom-right",
+      "Lookup",
+      "right",
       "left"
     ),
     templateConnection(

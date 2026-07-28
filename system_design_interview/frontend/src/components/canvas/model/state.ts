@@ -158,7 +158,8 @@ export function createConnection(
     fromFieldSide: options.fromFieldSide,
     toFieldSide: options.toFieldSide,
     cardinality: options.cardinality ?? "one-to-one",
-    label
+    label,
+    labelSize: "large"
   };
 }
 

@@ -45,10 +45,80 @@ def test_tinyurl_prompt_loads_public_metadata_and_private_guidance() -> None:
     assert prompt.skill_level == "Junior"
     assert prompt.difficulty == "Intermediate"
     assert "Caching" in prompt.focus
-    assert "design the backend for TinyURL" in prompt.prompt
+    assert "I want you to design TinyURL" in prompt.prompt
+    assert "high-level summary of the current architecture" in prompt.prompt
+    assert "detailed description of meaningful changes" in prompt.prompt
+    assert "Canvas v12 state" in prompt.prompt
+    assert "Answer with a clear point of view" in prompt.prompt
+    assert 'Do not default to "it depends"' in prompt.prompt
+    assert "requests for information" in prompt.prompt
+    assert "TinyURL creates a new unique short URL for every submission" in prompt.prompt
+    assert "Duplicate long URLs do not reuse an existing short URL" in prompt.prompt
+    assert "Assume a simple website where users submit a long URL" in prompt.prompt
+    assert "see both the original long URL and the generated short URL" in prompt.prompt
+    assert "Not every response must end with a question" in prompt.prompt
+    assert "Should the same long URL always return the same short URL?" not in prompt.prompt
+    assert "Answer the question before asking a follow-up" in prompt.prompt
     assert "# Private interviewer reference" in prompt.prompt
-    assert "Never reveal or supply the solution" in prompt.prompt
+    assert "Do not reveal or supply the solution during the candidate-led portion" in prompt.prompt
     assert LYRA_FIRST_MESSAGE not in prompt.prompt
+
+
+def test_tinyurl_opening_moves_directly_into_problem() -> None:
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+
+    problem_transition = (
+        "Got it. You'll lead the design on the canvas, and I'll ask a few "
+        "follow-up questions as we go. Let's dive right in! I want you to design TinyURL. "
+        "Are you familiar with TinyURL?"
+    )
+
+    assert problem_transition in prompt
+    assert "do not add any more explanation of the interview structure" in prompt
+    assert "Do you need me to clarify anything?" in prompt
+    assert "What requirements would you clarify before designing?" not in prompt
+    assert "Do not ask what requirements the candidate would like to clarify" in prompt
+    assert "then invite the candidate to clarify requirements" not in prompt
+
+
+def test_tinyurl_sql_path_and_closing_are_explicit() -> None:
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+
+    assert "let them completely finish that design" in prompt
+    assert (
+        "Reads significantly outweigh writes in this system. "
+        "How would you adapt your design for that?"
+    ) in prompt
+    assert "Do not mention caching in the initial question" in prompt
+    assert "Save the high-level NoSQL alternative for the closing summary" in prompt
+    assert "Okay, now let's cover what went well and what you can improve on." in prompt
+    assert (
+        "using a distributed NoSQL key-value database because short-code redirects "
+        "are simple, read-heavy lookups that benefit from horizontal scaling"
+    ) in prompt
+    assert "At a high level, I would use a URL service, NoSQL database, and cache." in prompt
+    assert "Do you have any questions about utilizing NoSQL?" in prompt
+    assert "Do not add more NoSQL reasons, components, implementation steps" in prompt
+    assert (
+        "It was wonderful talking with you. I encourage you to retry this TinyURL "
+        "system design interview using the improvement I suggested."
+    ) in prompt
+    assert "The only solution-reveal exception is the required closing summary" in prompt
+
+
+def test_tinyurl_closes_when_the_candidate_finishes_a_feasible_mvp() -> None:
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+
+    assert "Do not limit the interview to a fixed number of candidate responses" in prompt
+    assert "Treat the TinyURL MVP as feasible" in prompt
+    assert "Handling the read-heavy workload, usually through caching" in prompt
+    assert '"That\'s how I would design it,"' in prompt
+    assert "immediately begin the closing summary" in prompt
+    assert "ask only one final focused question about that gap" in prompt
+    assert "Is this how you would design TinyURL?" in prompt
+    assert "Does that cover how you would design the MVP?" not in prompt
+    assert "Only the candidate's speech can trigger this rule" in prompt
+    assert "None of your own closing language can be treated as a completion cue" in prompt
 
 
 def test_filename_does_not_determine_prompt_identity(tmp_path: Path) -> None:
@@ -175,6 +245,9 @@ def test_elevenlabs_payload_uses_one_conversation_packet_variable() -> None:
     payload = build_elevenlabs_agent_update_payload()
     agent = payload["conversation_config"]["agent"]
 
+    assert LYRA_FIRST_MESSAGE == (
+        "Hi, Taylor! I'm Lyra. Have you done a system design interview before?"
+    )
     assert agent["first_message"] == LYRA_FIRST_MESSAGE
     assert agent["disable_first_message_interruptions"] is True
     assert agent["dynamic_variables"] == {
