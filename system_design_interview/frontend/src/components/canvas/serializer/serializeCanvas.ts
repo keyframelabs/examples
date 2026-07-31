@@ -2,7 +2,6 @@ import {
   CANVAS_SCHEMA_VERSION,
   isConnection,
   isNode,
-  type CanvasConnection,
   type CanvasConnectionCardinality,
   type CanvasElement,
   type CanvasField,

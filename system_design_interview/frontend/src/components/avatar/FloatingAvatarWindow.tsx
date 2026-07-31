@@ -38,6 +38,7 @@ import {
 import type { InterviewPacket } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { CanvasSyncStatus } from "@/utils/avatar/canvasContextSync";
+import { formatInterviewTime } from "@/utils/interview/interviewTimer";
 
 type InterviewStage = "introduction" | "canvas";
 
@@ -89,6 +90,8 @@ export function FloatingAvatarWindow({
     avatarError,
     cameraError,
     cameraStatus,
+    interviewTimeRemainingMs,
+    hasInterviewExpired,
     events,
     canvasSyncStatus,
     joinInterview,
@@ -113,9 +116,12 @@ export function FloatingAvatarWindow({
     ? "Turning off Lyra"
     : isConnecting
       ? "Turning on Lyra"
-      : isConnected
-        ? "Turn off Lyra"
-        : "Turn on Lyra";
+      : hasInterviewExpired
+        ? "Interview ended"
+        : isConnected
+          ? "Turn off Lyra"
+          : "Turn on Lyra";
+  const interviewTime = formatInterviewTime(interviewTimeRemainingMs);
 
   useEffect(() => {
     onCanvasSyncStatusChange?.(canvasSyncStatus);
@@ -194,7 +200,7 @@ export function FloatingAvatarWindow({
         <div
           className={cn(
             intro &&
-            "mx-auto grid min-h-full w-full max-w-7xl grid-rows-[1fr_auto_1fr] border-x border-border/50 px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+              "mx-auto grid min-h-full w-full max-w-7xl grid-rows-[1fr_auto_1fr] border-x border-border/50 px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
           )}
         >
           {intro ? (
@@ -254,7 +260,15 @@ export function FloatingAvatarWindow({
                 onPointerCancel={handleHeaderPointerUp}
               >
                 <GripHorizontal className="size-4 text-muted-foreground" />
-                <div className="flex-1" />
+                <div className="flex-1 text-center">
+                  <span
+                    className="font-mono text-xs font-semibold tabular-nums text-foreground"
+                    role="timer"
+                    aria-label={`Interview time remaining ${interviewTime}`}
+                  >
+                    {interviewTime}
+                  </span>
+                </div>
                 <TooltipProvider delayDuration={250}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -420,7 +434,7 @@ export function FloatingAvatarWindow({
                           className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
                           aria-label={lyraToggleLabel}
                           aria-pressed={isConnected}
-                          disabled={isLyraChanging}
+                          disabled={isLyraChanging || hasInterviewExpired}
                           onClick={toggleLyra}
                         >
                           {isLyraChanging ? (

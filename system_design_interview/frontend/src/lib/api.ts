@@ -26,12 +26,7 @@ export type LiveSessionResponse = {
 export type InterviewPacket = {
   packetId: string;
   title: string;
-  summary: string;
-  questionNumber: number;
   skillLevel: "Intern" | "Junior" | "Senior";
-  difficulty: "Beginner" | "Intermediate" | "Advanced";
-  focus: string[];
-  tags: string[];
 };
 
 export async function getInterviewPackets(
@@ -131,16 +126,9 @@ function isInterviewPacket(value: unknown): value is InterviewPacket {
   return (
     typeof value.packetId === "string" &&
     typeof value.title === "string" &&
-    typeof value.summary === "string" &&
-    typeof value.questionNumber === "number" &&
     (value.skillLevel === "Intern" ||
       value.skillLevel === "Junior" ||
-      value.skillLevel === "Senior") &&
-    (value.difficulty === "Beginner" ||
-      value.difficulty === "Intermediate" ||
-      value.difficulty === "Advanced") &&
-    isStringArray(value.focus) &&
-    isStringArray(value.tags)
+      value.skillLevel === "Senior")
   );
 }
 

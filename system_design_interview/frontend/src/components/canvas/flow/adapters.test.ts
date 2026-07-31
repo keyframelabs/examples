@@ -50,7 +50,8 @@ describe("React Flow canvas adapters", () => {
       target: "db",
       sourceHandle: "anchor:bottom-right",
       targetHandle: "anchor:top-left",
-      selected: true
+      selected: true,
+      interactionWidth: 28
     });
   });
 

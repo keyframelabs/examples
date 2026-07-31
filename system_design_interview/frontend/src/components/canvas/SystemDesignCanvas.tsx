@@ -2,6 +2,7 @@ import {
   Background,
   BackgroundVariant,
   ConnectionMode,
+  ControlButton,
   Controls,
   ReactFlow,
   type Connection,
@@ -24,6 +25,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode
 } from "react";
+import { Scan } from "lucide-react";
 
 import {
   CanvasToolbar,
@@ -49,6 +51,7 @@ import {
 } from "@/components/canvas/flow/selection";
 import {
   createCanvasFitViewOptions,
+  fitCanvasToLeft,
   runInitialCanvasFit,
   type CanvasRightOcclusion
 } from "@/components/canvas/fitView";
@@ -608,9 +611,17 @@ export function SystemDesignCanvas({
       expectedNodeCount: flowElements.nodes.length,
       nodes: flowInstance.getNodes(),
       fitViewOptions,
-      fitView: (options) => void flowInstance.fitView(options)
+      fitView: (options) =>
+        void fitCanvasToLeft(flowInstance, options, rightOcclusion)
     });
   }, [fitViewOptions, flowElements.nodes, flowInstance, rightOcclusion]);
+
+  const handleFitView = useCallback(() => {
+    const instance = flowInstanceRef.current;
+    if (!instance) return;
+
+    void fitCanvasToLeft(instance, fitViewOptions, rightOcclusion);
+  }, [fitViewOptions, rightOcclusion]);
 
   return (
     <section
@@ -683,9 +694,18 @@ export function SystemDesignCanvas({
         <Controls
           position="bottom-left"
           showInteractive={false}
-          fitViewOptions={fitViewOptions}
+          showFitView={false}
           className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
-        />
+        >
+          <ControlButton
+            onClick={handleFitView}
+            className="react-flow__controls-fitview"
+            aria-label="Fit view"
+            title="Fit view"
+          >
+            <Scan aria-hidden="true" className="size-4" />
+          </ControlButton>
+        </Controls>
       </ReactFlow>
 
       {cardinalityMenu ? (

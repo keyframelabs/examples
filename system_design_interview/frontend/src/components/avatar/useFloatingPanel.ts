@@ -37,10 +37,9 @@ type ResizeState = {
   aspectRatio: number;
 };
 
-const PANEL_WIDTH = 404;
-const PANEL_HEIGHT = 816;
-const PANEL_ASPECT_RATIO = PANEL_WIDTH / PANEL_HEIGHT;
-const INITIAL_PANEL_WIDTH = 280;
+const DEFAULT_PANEL_WIDTH = 320;
+const DEFAULT_PANEL_HEIGHT = 640;
+const MAX_PANEL_WIDTH = 404;
 const MIN_PANEL_WIDTH = 240;
 const MINIMIZED_HEIGHT = 40;
 const VIEWPORT_MARGIN = 12;
@@ -290,7 +289,7 @@ export function useFloatingPanel(stage: InterviewStage) {
     top: number
   ): PanelSize {
     const maxWidth = Math.min(
-      PANEL_WIDTH,
+      MAX_PANEL_WIDTH,
       Math.max(1, anchorRight - VIEWPORT_MARGIN),
       Math.max(1, window.innerHeight - top - VIEWPORT_MARGIN) * aspectRatio
     );
@@ -369,8 +368,8 @@ export function useFloatingPanel(stage: InterviewStage) {
 
 export function initialPanelSize(viewport = getViewportSize()): PanelSize {
   const preferredSize = {
-    width: INITIAL_PANEL_WIDTH,
-    height: INITIAL_PANEL_WIDTH / PANEL_ASPECT_RATIO
+    width: DEFAULT_PANEL_WIDTH,
+    height: DEFAULT_PANEL_HEIGHT
   };
 
   if (!viewport) {
@@ -386,7 +385,7 @@ export function fitPanelSizeToViewport(
 ): PanelSize {
   const aspectRatio = size.width / size.height;
   const maxWidth = Math.min(
-    PANEL_WIDTH,
+    MAX_PANEL_WIDTH,
     Math.max(1, viewport.width - INITIAL_HORIZONTAL_INSET),
     Math.max(
       1,

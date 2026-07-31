@@ -1,4 +1,10 @@
-import type { FitViewOptions, Node } from "@xyflow/react";
+import type {
+  FitViewOptions,
+  Node,
+  ReactFlowInstance,
+  Rect,
+  Viewport
+} from "@xyflow/react";
 
 export type CanvasRightOcclusion = {
   inset: number;
@@ -26,6 +32,8 @@ const TOP_PADDING = 96;
 const SIDE_PADDING = 32;
 const BOTTOM_PADDING = 32;
 const OCCLUSION_GUTTER = 32;
+// The control panel ends at 59px; keep a 26px gap before fitted nodes.
+const FITTED_CONTENT_LEFT_INSET = 85;
 
 export function measureCanvasRightOcclusion(
   panelBounds: PanelHorizontalBounds,
@@ -70,6 +78,73 @@ export function createCanvasFitViewOptions<NodeType extends Node = Node>(
       left: `${SIDE_PADDING}px`
     }
   };
+}
+
+export function alignViewportToCanvasLeft(
+  viewport: Viewport,
+  bounds: Rect,
+  occlusion: CanvasRightOcclusion | null,
+  leftInset = FITTED_CONTENT_LEFT_INSET
+): Viewport {
+  const values = [
+    viewport.x,
+    viewport.y,
+    viewport.zoom,
+    bounds.x,
+    bounds.width,
+    leftInset
+  ];
+  if (
+    !occlusion
+    || !values.every(Number.isFinite)
+    || viewport.zoom <= 0
+    || bounds.width < 0
+  ) {
+    return viewport;
+  }
+
+  const usableRight = usableCanvasRightEdge(occlusion);
+  const renderedWidth = bounds.width * viewport.zoom;
+  if (
+    !Number.isFinite(usableRight)
+    || leftInset < SIDE_PADDING
+    || leftInset + renderedWidth > usableRight
+  ) {
+    return viewport;
+  }
+
+  const renderedLeft = bounds.x * viewport.zoom + viewport.x;
+  if (renderedLeft === leftInset) return viewport;
+
+  return {
+    ...viewport,
+    x: viewport.x + leftInset - renderedLeft
+  };
+}
+
+export async function fitCanvasToLeft<NodeType extends Node>(
+  instance: Pick<
+    ReactFlowInstance<NodeType>,
+    "fitView" | "getNodes" | "getNodesBounds" | "getViewport" | "setViewport"
+  >,
+  options: FitViewOptions<NodeType>,
+  occlusion: CanvasRightOcclusion | null
+): Promise<boolean> {
+  const didFit = await instance.fitView(options);
+  const nodes = instance.getNodes();
+  if (nodes.length === 0) return didFit;
+
+  const fittedViewport = instance.getViewport();
+  const viewport = alignViewportToCanvasLeft(
+    fittedViewport,
+    instance.getNodesBounds(nodes),
+    occlusion
+  );
+  if (viewport !== fittedViewport) {
+    await instance.setViewport(viewport);
+  }
+
+  return didFit;
 }
 
 export function areNodesMeasuredForFit(
@@ -138,4 +213,22 @@ function rightPaddingForOcclusion({
   );
 
   return Math.min(requestedPadding, maximumPadding);
+}
+
+function usableCanvasRightEdge({
+  inset,
+  viewportWidth
+}: CanvasRightOcclusion): number {
+  if (
+    !Number.isFinite(inset)
+    || !Number.isFinite(viewportWidth)
+    || viewportWidth <= 0
+  ) {
+    return Number.NaN;
+  }
+
+  return Math.max(
+    SIDE_PADDING,
+    viewportWidth - Math.max(0, inset) - OCCLUSION_GUTTER
+  );
 }

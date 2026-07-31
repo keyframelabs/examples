@@ -33,6 +33,8 @@ const MARKER_HEIGHT = 16;
 const CROW_LENGTH = 16;
 const CROW_SPREAD = 8;
 const EDGE_LABEL_Z_INDEX = 1001;
+const EDGE_STROKE_WIDTH = 3;
+const SELECTED_EDGE_STROKE_WIDTH = 4;
 
 function SystemDesignEdgeComponent({
   sourceX,
@@ -52,7 +54,9 @@ function SystemDesignEdgeComponent({
   const stroke = selected
     ? "var(--canvas-connection-selected)"
     : "var(--canvas-connection)";
-  const strokeWidth = selected ? 2.8 : 2;
+  const strokeWidth = selected
+    ? SELECTED_EDGE_STROKE_WIDTH
+    : EDGE_STROKE_WIDTH;
   const [fromTerminal, toTerminal] = cardinalityTerminals(
     data.connection.cardinality
   );
@@ -265,7 +269,7 @@ export const SystemDesignConnectionLine = memo(
         connectionStatus === "invalid"
           ? "var(--destructive)"
           : "var(--primary)",
-      strokeWidth: 2.4,
+      strokeWidth: EDGE_STROKE_WIDTH,
       strokeDasharray: "6 4",
       strokeLinecap: "round",
       strokeLinejoin: "round"

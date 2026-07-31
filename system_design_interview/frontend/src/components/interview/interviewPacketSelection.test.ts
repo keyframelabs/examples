@@ -13,12 +13,7 @@ function packet(
   return {
     packetId,
     title: packetId,
-    summary: "",
-    questionNumber: 1,
-    skillLevel,
-    difficulty: "Beginner",
-    focus: [],
-    tags: []
+    skillLevel
   };
 }
 

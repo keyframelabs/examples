@@ -7,10 +7,7 @@ import {
 } from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
 import type { CanvasRightOcclusion } from "@/components/canvas/fitView";
-import {
-  createCanvasSessionDefaults,
-  TINYURL_PACKET_ID
-} from "@/components/canvas/model/interviewCanvasTemplates";
+import { createCanvasSessionDefaults } from "@/components/canvas/model/interviewCanvasTemplates";
 import type { CanvasState } from "@/components/canvas/model/types";
 import { InterviewPacketLanding } from "@/components/interview/InterviewPacketLanding";
 import {
@@ -85,14 +82,11 @@ export function App() {
   }, []);
 
   const handleStartInterview = useCallback((packet: InterviewPacket) => {
-    const nextCanvasSession = createCanvasSessionDefaults(packet.packetId);
+    const nextCanvasSession = createCanvasSessionDefaults();
     const cameraRequest = requestUserCamera();
-    const liveSessionRequest =
-      packet.packetId === TINYURL_PACKET_ID
-        ? createLiveSession(packet.packetId)
-        : undefined;
+    const liveSessionRequest = createLiveSession(packet.packetId);
     void cameraRequest.catch(() => undefined);
-    void liveSessionRequest?.catch(() => undefined);
+    void liveSessionRequest.catch(() => undefined);
 
     const startup = {
       cameraRequest,

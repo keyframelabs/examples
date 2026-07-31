@@ -218,21 +218,21 @@ export function InterviewPacketLanding({
 
   return (
     <section className="h-screen overflow-y-auto bg-canvas-paper px-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-[80vh] max-w-7xl flex-col justify-center border-x border-border/50 py-8 [zoom:1.25]">
-        <header className="mx-auto mb-8 max-w-5xl text-center">
-          <div className="mx-auto mb-4 size-44 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-52">
+      <div className="mx-auto flex min-h-full max-w-7xl flex-col justify-center border-x border-border/50 py-6">
+        <header className="mx-auto mb-6 max-w-5xl text-center">
+          <div className="mx-auto mb-3 size-36 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-44">
             <img
               src={LYRA_STILL_URL}
               alt="Lyra, your AI system design interviewer"
               className="h-full w-full object-cover"
             />
           </div>
-          <h1 className="text-balance font-serif text-4xl leading-none tracking-tight text-foreground sm:text-6xl">
+          <h1 className="text-balance font-serif text-4xl leading-none tracking-tight text-foreground sm:text-5xl">
             Ace your next system design interview with Lyra
           </h1>
         </header>
         <div
-          className="mb-8 w-full border-t border-border/50"
+          className="mb-6 w-full border-t border-border/50"
           aria-hidden="true"
         />
 
@@ -386,20 +386,17 @@ export function InterviewPacketLanding({
                         >
                           <Card
                             className={cn(
-                              "flex h-full min-h-80 flex-col gap-0 p-6 transition-[border-color,background-color,transform]",
+                              "flex h-full min-h-64 flex-col gap-0 p-5 transition-[border-color,background-color,transform]",
                               isSelected
                                 ? "-translate-y-0.5 border-foreground bg-card shadow-lg"
                                 : "border-border/80 bg-card/70 hover:border-muted-foreground"
                             )}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <Badge variant="outline">
-                                Q{packet.questionNumber}
-                              </Badge>
+                            <div className="flex items-start justify-end gap-3">
                               <Badge>{packet.skillLevel}</Badge>
                             </div>
-                            <div className="flex flex-1 items-center justify-center py-6 text-center">
-                              <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+                            <div className="flex flex-1 items-center justify-center py-4 text-center">
+                              <h2 className="text-balance text-xl font-semibold tracking-tight sm:text-2xl">
                                 Design {packet.title}
                               </h2>
                             </div>
@@ -412,7 +409,7 @@ export function InterviewPacketLanding({
               </TabsContent>
             </Carousel>
 
-            <div className="mt-4 flex justify-center">
+            <div className="mt-3 flex justify-center">
               <Button
                 type="button"
                 size="lg"

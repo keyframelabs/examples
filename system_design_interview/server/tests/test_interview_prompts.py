@@ -4,47 +4,36 @@ import pytest
 
 from app.interviews.interview_loader import (
     DEFAULT_INTERVIEW_PROMPT_ID,
-    LYRA_FIRST_MESSAGE,
     PROMPTS_DIR,
     InterviewPromptValidationError,
     get_interview_prompt,
     load_interview_prompt,
     load_interview_prompts,
 )
-from app.main import (
-    INTERVIEW_PACKET_DYNAMIC_VARIABLE,
-    INTERVIEW_PACKET_PLACEHOLDER,
-    build_dynamic_elevenlabs_prompt,
-    build_elevenlabs_agent_update_payload,
-)
 
-DEFAULT_PUBLIC_METADATA = """summary: A focused system design interview.
-question_number: 99
-skill_level: Junior
-difficulty: Intermediate
-focus:
-  - Data model
-tags:
-  - databases"""
+DEFAULT_METADATA = """display_name: Focused System Design
+skill_level: Junior"""
 
 
-def write_prompt(path: Path, metadata: str, body: str = "# Prompt\n\nInterview the candidate.\n") -> None:
+def write_prompt(
+    path: Path,
+    metadata: str = DEFAULT_METADATA,
+    body: str = "# Prompt\n\nInterview the candidate.\n",
+) -> None:
     path.write_text(
-        f"---\n{metadata}\n{DEFAULT_PUBLIC_METADATA}\n---\n{body}",
+        f"---\n{metadata}\n---\n{body}",
         encoding="utf-8",
     )
 
 
 def test_tinyurl_prompt_loads_public_metadata_and_private_guidance() -> None:
-    path = PROMPTS_DIR / "tinyurl_interview_prompt.md"
+    path = PROMPTS_DIR / "tinyurl-system-design.md"
 
     prompt = load_interview_prompt(path)
 
     assert prompt.prompt_id == DEFAULT_INTERVIEW_PROMPT_ID
     assert prompt.display_name == "TinyURL"
     assert prompt.skill_level == "Junior"
-    assert prompt.difficulty == "Intermediate"
-    assert "Caching" in prompt.focus
     assert "I want you to design TinyURL" in prompt.prompt
     assert "high-level summary of the current architecture" in prompt.prompt
     assert "detailed description of meaningful changes" in prompt.prompt
@@ -61,15 +50,14 @@ def test_tinyurl_prompt_loads_public_metadata_and_private_guidance() -> None:
     assert "Answer the question before asking a follow-up" in prompt.prompt
     assert "# Private interviewer reference" in prompt.prompt
     assert "Do not reveal or supply the solution during the candidate-led portion" in prompt.prompt
-    assert LYRA_FIRST_MESSAGE not in prompt.prompt
 
 
 def test_tinyurl_opening_moves_directly_into_problem() -> None:
-    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl-system-design.md").prompt
 
     problem_transition = (
-        "Got it. You'll lead the design on the canvas, and I'll ask a few "
-        "follow-up questions as we go. Let's dive right in! I want you to design TinyURL. "
+        "Not to worry. You'll lead the design on the canvas, and I'll ask a few "
+        "follow-up questions as we go. So Let's dive right in! I want you to design TinyURL. "
         "Are you familiar with TinyURL?"
     )
 
@@ -82,13 +70,10 @@ def test_tinyurl_opening_moves_directly_into_problem() -> None:
 
 
 def test_tinyurl_sql_path_and_closing_are_explicit() -> None:
-    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl-system-design.md").prompt
 
     assert "let them completely finish that design" in prompt
-    assert (
-        "Reads significantly outweigh writes in this system. "
-        "How would you adapt your design for that?"
-    ) in prompt
+    assert ("Reads significantly outweigh writes in this system. How would you adapt your design for that?") in prompt
     assert "Do not mention caching in the initial question" in prompt
     assert "Save the high-level NoSQL alternative for the closing summary" in prompt
     assert "Okay, now let's cover what went well and what you can improve on." in prompt
@@ -107,7 +92,7 @@ def test_tinyurl_sql_path_and_closing_are_explicit() -> None:
 
 
 def test_tinyurl_closes_when_the_candidate_finishes_a_feasible_mvp() -> None:
-    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl_interview_prompt.md").prompt
+    prompt = load_interview_prompt(PROMPTS_DIR / "tinyurl-system-design.md").prompt
 
     assert "Do not limit the interview to a fixed number of candidate responses" in prompt
     assert "Treat the TinyURL MVP as feasible" in prompt
@@ -121,9 +106,9 @@ def test_tinyurl_closes_when_the_candidate_finishes_a_feasible_mvp() -> None:
     assert "None of your own closing language can be treated as a completion cue" in prompt
 
 
-def test_filename_does_not_determine_prompt_identity(tmp_path: Path) -> None:
-    path = tmp_path / "anything at all.md"
-    write_prompt(path, "id: explicit-prompt-id\ndisplay_name: Explicit Prompt")
+def test_filename_stem_determines_prompt_identity(tmp_path: Path) -> None:
+    path = tmp_path / "explicit-prompt-id.md"
+    write_prompt(path, "display_name: Explicit Prompt\nskill_level: Intern")
 
     prompt = load_interview_prompt(path)
 
@@ -168,30 +153,98 @@ def test_catalog_contains_all_packets_with_assigned_skill_levels() -> None:
         "distributed-sql-database-system-design": "Senior",
         "collaborative-documents-system-design": "Senior",
     }
-    assert {(prompt.skill_level, prompt.difficulty) for prompt in prompts.values()} == {
-        ("Intern", "Beginner"),
-        ("Junior", "Intermediate"),
-        ("Senior", "Advanced"),
-    }
+    assert {prompt.source_path.stem for prompt in prompts.values()} == set(prompts)
+
+
+def test_every_packet_uses_shared_formula_canvas_context_and_time_limit() -> None:
+    prompts = load_interview_prompts()
+    required_sections = (
+        "# Personality",
+        "# Environment",
+        "## Canvas context",
+        "# Goal",
+        "# Interview flow",
+        "## Opening",
+        "## If the candidate is unfamiliar with the product",
+        "## Candidate-led exploration and 10-minute pacing",
+        "## Core/MVP completion and closing trigger",
+        "## Answering candidate questions",
+        "## Edge cases",
+        "# Voice response style",
+        "# Candidate-facing reference",
+        "## Functional requirements",
+        "## Non-functional requirements",
+        "## Scale assumptions",
+        "# Interviewer question bank",
+        "## Clarifying questions",
+        "## Topics to probe",
+        "## Risk-focused probes",
+        "## Examples of the allowed guidance boundary",
+        "# Private interviewer reference",
+        "## Possible solution families",
+        "## Strong design direction",
+        "# Evaluation and closing",
+        "# Guardrails",
+        "# Critical reminder",
+    )
+    environment_sections: set[str] = set()
+
+    for packet in prompts.values():
+        for section in required_sections:
+            assert section in packet.prompt, f"{packet.prompt_id} is missing {section}"
+        assert "hard 10-minute" in packet.prompt
+        assert "Ask one focused question at a time" in packet.prompt
+        assert "As time runs out, introduce no new topics" in packet.prompt
+        assert "Never claim to see or know the UI clock" in packet.prompt
+
+        environment = packet.prompt.split("# Environment\n", 1)[1].split("# Goal\n", 1)[0]
+        environment_sections.add(environment)
+
+    assert len(environment_sections) == 1
+
+
+def test_tinyurl_only_content_is_not_copied_to_other_packets() -> None:
+    prompts = load_interview_prompts()
+
+    for prompt_id, packet in prompts.items():
+        if prompt_id == DEFAULT_INTERVIEW_PROMPT_ID:
+            continue
+        assert "SQL-first path and caching probe" not in packet.prompt
+        assert "Do you have any questions about utilizing NoSQL?" not in packet.prompt
+        assert "TinyURL creates a new unique short URL" not in packet.prompt
 
 
 @pytest.mark.parametrize(
     ("metadata", "body", "expected_error"),
     [
-        ("display_name: Missing ID", "# Prompt\n", "missing required metadata field `id`"),
-        ("id: missing-name", "# Prompt\n", "missing required metadata field `display_name`"),
+        ("skill_level: Junior", "# Prompt\n", "missing required metadata field `display_name`"),
         (
-            "id: has-extra\ndisplay_name: Has Extra\ncategory: backend",
+            'display_name: "   "\nskill_level: Junior',
             "# Prompt\n",
-            "unsupported metadata field `category`",
+            "invalid metadata field `display_name`: must be a nonempty string",
         ),
         (
-            "id: Not Kebab Case\ndisplay_name: Invalid ID",
+            "display_name:\n  - Invalid\nskill_level: Junior",
             "# Prompt\n",
-            "must use kebab-case with lowercase letters and numbers",
+            "invalid metadata field `display_name`",
         ),
-        ("id: empty-body\ndisplay_name: Empty Body", "\n", "Markdown prompt body must not be empty"),
-        ("id: [\ndisplay_name: Broken YAML", "# Prompt\n", "invalid YAML front matter"),
+        (
+            "display_name: Missing Skill Level",
+            "# Prompt\n",
+            "missing required metadata field `skill_level`",
+        ),
+        (
+            "display_name: Invalid Skill Level\nskill_level: Staff",
+            "# Prompt\n",
+            "invalid metadata field `skill_level`",
+        ),
+        (
+            "display_name: Has Extra\nskill_level: Junior\nsummary: Not allowed",
+            "# Prompt\n",
+            "unsupported metadata field `summary`",
+        ),
+        (DEFAULT_METADATA, "\n", "Markdown prompt body must not be empty"),
+        ("display_name: [\nskill_level: Junior", "# Prompt\n", "invalid YAML front matter"),
     ],
 )
 def test_invalid_prompt_reports_filename(
@@ -200,67 +253,53 @@ def test_invalid_prompt_reports_filename(
     body: str,
     expected_error: str,
 ) -> None:
-    path = tmp_path / "invalid_prompt.md"
+    path = tmp_path / "invalid-prompt.md"
     write_prompt(path, metadata, body)
 
     with pytest.raises(InterviewPromptValidationError) as exc_info:
         load_interview_prompts(tmp_path)
 
     message = str(exc_info.value)
-    assert "invalid_prompt.md" in message
+    assert "invalid-prompt.md" in message
     assert expected_error in message
 
 
+def test_invalid_filename_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "invalid_prompt.md"
+    write_prompt(path)
+
+    with pytest.raises(InterviewPromptValidationError) as exc_info:
+        load_interview_prompts(tmp_path)
+
+    message = str(exc_info.value)
+    assert "invalid_prompt.md" in message
+    assert "filename stem must use kebab-case with lowercase letters and numbers" in message
+
+
 def test_missing_front_matter_is_rejected(tmp_path: Path) -> None:
-    path = tmp_path / "missing_front_matter.md"
+    path = tmp_path / "missing-front-matter.md"
     path.write_text("# Prompt\n", encoding="utf-8")
 
     with pytest.raises(InterviewPromptValidationError, match="YAML front matter must start"):
         load_interview_prompts(tmp_path)
 
 
-def test_duplicate_ids_list_every_conflicting_filename(tmp_path: Path) -> None:
-    first = tmp_path / "first_name.md"
-    second = tmp_path / "completely_different_name.md"
-    metadata = "id: duplicate-id\ndisplay_name: Duplicate"
-    write_prompt(first, metadata)
-    write_prompt(second, metadata)
+def test_duplicate_derived_ids_list_every_conflicting_filename(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate-id.md"
+    write_prompt(path, "display_name: Duplicate\nskill_level: Junior")
+
+    class DuplicatePromptDirectory:
+        def glob(self, _pattern: str) -> list[Path]:
+            return [path, path]
 
     with pytest.raises(InterviewPromptValidationError) as exc_info:
-        load_interview_prompts(tmp_path)
+        load_interview_prompts(DuplicatePromptDirectory())  # type: ignore[arg-type]
 
     message = str(exc_info.value)
     assert 'duplicate interview prompt id "duplicate-id"' in message
-    assert "first_name.md" in message
-    assert "completely_different_name.md" in message
+    assert message.count("duplicate-id.md") == 2
 
 
 def test_unknown_prompt_lookup_is_clear() -> None:
     with pytest.raises(ValueError, match="Unknown interview prompt: missing-prompt"):
         get_interview_prompt("missing-prompt", {})
-
-
-def test_elevenlabs_payload_uses_one_conversation_packet_variable() -> None:
-    prompts = load_interview_prompts()
-    payload = build_elevenlabs_agent_update_payload()
-    agent = payload["conversation_config"]["agent"]
-
-    assert LYRA_FIRST_MESSAGE == (
-        "Hi, Taylor! I'm Lyra. Have you done a system design interview before?"
-    )
-    assert agent["first_message"] == LYRA_FIRST_MESSAGE
-    assert agent["disable_first_message_interruptions"] is True
-    assert agent["dynamic_variables"] == {
-        "dynamic_variable_placeholders": {
-            INTERVIEW_PACKET_DYNAMIC_VARIABLE: INTERVIEW_PACKET_PLACEHOLDER,
-        }
-    }
-    dynamic_prompt = agent["prompt"]["prompt"]
-    assert dynamic_prompt == build_dynamic_elevenlabs_prompt()
-    assert "{{interview_packet}}" in dynamic_prompt
-    for prompt in prompts.values():
-        assert prompt.prompt.strip() not in dynamic_prompt
-    assert payload["conversation_config"]["turn"] == {
-        "turn_timeout": 15,
-        "turn_eagerness": "normal",
-    }

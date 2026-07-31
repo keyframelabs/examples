@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -8,8 +9,6 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.interviews.interview_loader import InterviewPrompt, InterviewPromptValidationError
-
-REAL_SYNC_ELEVENLABS_AGENT = main.sync_elevenlabs_agent
 
 
 class StubResponse:
@@ -43,10 +42,6 @@ def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     ]:
         monkeypatch.delenv(name, raising=False)
 
-    async def skip_startup_sync(*_args: Any, **_kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(main, "sync_elevenlabs_agent", skip_startup_sync)
     main.get_settings.cache_clear()
     yield
     main.get_settings.cache_clear()
@@ -78,16 +73,24 @@ def test_interview_catalog_exposes_only_public_metadata() -> None:
         *(["Junior"] * 5),
         *(["Senior"] * 5),
     ]
-    assert set(interviews[0]) == {
-        "packetId",
-        "title",
-        "summary",
-        "questionNumber",
-        "skillLevel",
-        "difficulty",
-        "focus",
-        "tags",
-    }
+    assert [(interview["skillLevel"], interview["title"]) for interview in interviews] == [
+        ("Intern", "File Upload Service"),
+        ("Intern", "Pastebin"),
+        ("Intern", "Product Catalog API"),
+        ("Intern", "User Profile API"),
+        ("Intern", "Webhook Ingestion"),
+        ("Junior", "API Rate Limiter"),
+        ("Junior", "Google Calendar"),
+        ("Junior", "Hotel Booking System"),
+        ("Junior", "Notification Service"),
+        ("Junior", "TinyURL"),
+        ("Senior", "Distributed SQL Database"),
+        ("Senior", "Google Analytics"),
+        ("Senior", "Google Docs"),
+        ("Senior", "Kafka"),
+        ("Senior", "Key-Value Store"),
+    ]
+    assert all(set(interview) == {"packetId", "title", "skillLevel"} for interview in interviews)
     serialized = response.text
     assert "Private interviewer reference" not in serialized
     assert "source_path" not in serialized
@@ -156,32 +159,20 @@ def test_create_session_uses_main_provider_overrides(monkeypatch: pytest.MonkeyP
     assert response.json()["conversationId"] == "patched-conversation-id"
 
 
-def test_backend_startup_validates_packets_and_syncs_dynamic_agent_prompt(
+def test_backend_startup_validates_and_snapshots_packets_without_provider_requests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
     default_prompt = InterviewPrompt(
         prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
         display_name="TinyURL",
-        summary="Design TinyURL.",
-        question_number=1,
         skill_level="Junior",
-        difficulty="Intermediate",
-        focus=("URLs",),
-        tags=("backend",),
         prompt="# TinyURL prompt\n",
         source_path=Path("tinyurl.md"),
     )
     future_prompt = InterviewPrompt(
         prompt_id="future-interview",
         display_name="Future",
-        summary="Design a future system.",
-        question_number=2,
         skill_level="Senior",
-        difficulty="Advanced",
-        focus=("Scale",),
-        tags=("distributed-systems",),
         prompt="# Future prompt\n",
         source_path=Path("future.md"),
     )
@@ -196,7 +187,6 @@ def test_backend_startup_validates_packets_and_syncs_dynamic_agent_prompt(
         }
 
     monkeypatch.setattr(main, "load_interview_prompts", load_prompts)
-    monkeypatch.setattr(main, "sync_elevenlabs_agent", REAL_SYNC_ELEVENLABS_AGENT)
     main.get_settings.cache_clear()
 
     class RecordingStartupClient:
@@ -226,19 +216,7 @@ def test_backend_startup_validates_packets_and_syncs_dynamic_agent_prompt(
         future_prompt.prompt_id,
     }
     assert load_calls == 1
-    assert RecordingStartupClient.requests == [
-        {
-            "method": "PATCH",
-            "url": "https://api.elevenlabs.io/v1/convai/agents/agent_123",
-            "kwargs": {
-                "headers": {
-                    "Content-Type": "application/json",
-                    "xi-api-key": "eleven-key",
-                },
-                "json": main.build_elevenlabs_agent_update_payload(),
-            },
-        },
-    ]
+    assert RecordingStartupClient.requests == []
 
 
 def test_backend_startup_stops_on_prompt_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -248,41 +226,6 @@ def test_backend_startup_stops_on_prompt_validation_error(monkeypatch: pytest.Mo
     monkeypatch.setattr(main, "load_interview_prompts", fail_validation)
 
     with pytest.raises(InterviewPromptValidationError, match="bad.md: missing id"):
-        with TestClient(main.app):
-            pass
-
-
-def test_backend_startup_fails_when_elevenlabs_sync_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
-    monkeypatch.setattr(main, "sync_elevenlabs_agent", REAL_SYNC_ELEVENLABS_AGENT)
-    main.get_settings.cache_clear()
-
-    class FailingStartupClient:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-        async def __aenter__(self) -> "FailingStartupClient":
-            return self
-
-        async def __aexit__(self, *_args: Any) -> None:
-            return None
-
-        async def request(self, _method: str, _url: str, **_kwargs: Any) -> StubResponse:
-            return StubResponse(
-                body={"detail": "agent update rejected"},
-                status_code=500,
-                reason_phrase="Internal Server Error",
-            )
-
-    monkeypatch.setattr(main.httpx, "AsyncClient", FailingStartupClient)
-
-    with pytest.raises(
-        RuntimeError,
-        match="ElevenLabs startup sync failed: ElevenLabs agent update failed: agent update rejected",
-    ):
         with TestClient(main.app):
             pass
 
@@ -445,18 +388,77 @@ def test_create_session_selects_only_requested_packet_without_agent_mutation(
     assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
 
 
+def test_concurrent_live_sessions_keep_interview_packets_isolated() -> None:
+    settings = main.Settings(
+        keyframe_api_key="keyframe-key",
+        elevenlabs_api_key="eleven-key",
+        elevenlabs_agent_id="agent_123",
+    )
+    first_prompt = InterviewPrompt(
+        prompt_id="first-interview",
+        display_name="First",
+        skill_level="Intern",
+        prompt="# First private prompt\n",
+        source_path=Path("first-interview.md"),
+    )
+    second_prompt = InterviewPrompt(
+        prompt_id="second-interview",
+        display_name="Second",
+        skill_level="Senior",
+        prompt="# Second private prompt\n",
+        source_path=Path("second-interview.md"),
+    )
+
+    async def create_keyframe_session(*_args: Any, **_kwargs: Any) -> main.KeyframeSessionDetails:
+        await asyncio.sleep(0)
+        return main.KeyframeSessionDetails(
+            server_url="wss://keyframe.example/live",
+            participant_token="participant-token",
+            agent_identity="avatar-agent",
+        )
+
+    async def get_signed_url(*_args: Any, **_kwargs: Any) -> main.ElevenLabsSignedUrlResponse:
+        await asyncio.sleep(0)
+        return main.ElevenLabsSignedUrlResponse(signed_url="wss://elevenlabs.example/conversation")
+
+    async def create_sessions() -> list[main.LiveSessionResponse]:
+        client = object()
+        return await asyncio.gather(
+            main.create_live_session(
+                client,  # type: ignore[arg-type]
+                settings,
+                first_prompt,
+                setting_validator=main.require_setting,
+                keyframe_session_creator=create_keyframe_session,
+                signed_url_provider=get_signed_url,
+            ),
+            main.create_live_session(
+                client,  # type: ignore[arg-type]
+                settings,
+                second_prompt,
+                setting_validator=main.require_setting,
+                keyframe_session_creator=create_keyframe_session,
+                signed_url_provider=get_signed_url,
+            ),
+        )
+
+    first_session, second_session = asyncio.run(create_sessions())
+
+    assert first_session.voice_agent_details.dynamic_variables == {
+        "interview_packet": "# First private prompt",
+    }
+    assert second_session.voice_agent_details.dynamic_variables == {
+        "interview_packet": "# Second private prompt",
+    }
+
+
 def test_catalog_and_session_validation_share_the_startup_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     startup_prompt = InterviewPrompt(
         prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
         display_name="TinyURL startup snapshot",
-        summary="Design TinyURL.",
-        question_number=1,
         skill_level="Junior",
-        difficulty="Intermediate",
-        focus=("URLs",),
-        tags=("backend",),
         prompt="# Private startup prompt\n",
         source_path=Path("tinyurl.md"),
     )

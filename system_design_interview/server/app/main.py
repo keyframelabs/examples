@@ -15,15 +15,11 @@ from fastapi.responses import JSONResponse
 from . import providers as provider_operations
 from .interviews.interview_loader import (
     DEFAULT_INTERVIEW_PROMPT_ID,
-    DEFAULT_TURN_EAGERNESS,
-    DEFAULT_TURN_TIMEOUT_SECONDS,
-    LYRA_FIRST_MESSAGE,
     InterviewPrompt,
     load_interview_prompts,
 )
 from .providers import (
     INTERVIEW_PACKET_DYNAMIC_VARIABLE,
-    INTERVIEW_PACKET_PLACEHOLDER,
     require_setting,
     validate_provider_model,
 )
@@ -50,12 +46,8 @@ __all__ = [
     "DEFAULT_CLIENT_ORIGINS",
     "DEFAULT_INTERVIEW_PROMPT_ID",
     "DEFAULT_PROVIDER_TIMEOUT_SECONDS",
-    "DEFAULT_TURN_EAGERNESS",
-    "DEFAULT_TURN_TIMEOUT_SECONDS",
     "ENV_FILES",
     "INTERVIEW_PACKET_DYNAMIC_VARIABLE",
-    "INTERVIEW_PACKET_PLACEHOLDER",
-    "LYRA_FIRST_MESSAGE",
     "ROOT_DIR",
     "CreateSessionRequest",
     "ElevenLabsSignedUrlResponse",
@@ -67,8 +59,6 @@ __all__ = [
     "Settings",
     "VoiceAgentDetails",
     "app",
-    "build_dynamic_elevenlabs_prompt",
-    "build_elevenlabs_agent_update_payload",
     "create_keyframe_session",
     "create_session",
     "extract_provider_error",
@@ -76,8 +66,6 @@ __all__ = [
     "parse_provider_body",
     "provider_json",
     "require_setting",
-    "sync_elevenlabs_agent",
-    "update_elevenlabs_agent",
     "validate_provider_model",
 ]
 
@@ -91,16 +79,6 @@ logger = logging.getLogger(__name__)
 def get_settings() -> Settings:
     # Keep ENV_FILES here so existing embedders can override app.main.ENV_FILES.
     return Settings(_env_file=ENV_FILES)
-
-
-def build_dynamic_elevenlabs_prompt() -> str:
-    return provider_operations.build_dynamic_elevenlabs_prompt()
-
-
-def build_elevenlabs_agent_update_payload() -> dict[str, Any]:
-    return provider_operations.build_elevenlabs_agent_update_payload(
-        prompt_builder=build_dynamic_elevenlabs_prompt,
-    )
 
 
 def parse_provider_body(response: httpx.Response) -> Any:
@@ -163,43 +141,11 @@ async def get_elevenlabs_signed_url(
     )
 
 
-async def update_elevenlabs_agent(
-    client: httpx.AsyncClient,
-    api_key: str,
-    agent_id: str,
-    settings: Settings | None = None,
-) -> None:
-    await provider_operations.update_elevenlabs_agent(
-        client,
-        api_key,
-        agent_id,
-        settings or get_settings(),
-        request_json=provider_json,
-        payload_builder=build_elevenlabs_agent_update_payload,
-    )
-
-
-async def sync_elevenlabs_agent(
-    client: httpx.AsyncClient,
-    settings: Settings | None = None,
-) -> None:
-    await provider_operations.sync_elevenlabs_agent(
-        client,
-        settings or get_settings(),
-        setting_validator=require_setting,
-        update_agent=update_elevenlabs_agent,
-    )
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[dict[str, object]]:
     prompts = load_interview_prompts()
     settings = get_settings()
     async with httpx.AsyncClient(timeout=settings.provider_timeout_seconds) as client:
-        try:
-            await sync_elevenlabs_agent(client, settings)
-        except HTTPException as exc:
-            raise RuntimeError(f"ElevenLabs startup sync failed: {exc.detail}") from exc
         yield {
             "provider_http_client": client,
             "interview_prompts": MappingProxyType(dict(prompts)),
@@ -241,7 +187,12 @@ async def list_interviews(request: Request) -> InterviewCatalogResponse:
     prompts = get_synced_interview_prompts(request)
     ordered_prompts = sorted(
         prompts.values(),
-        key=lambda prompt: (SKILL_LEVEL_ORDER[prompt.skill_level], prompt.question_number),
+        key=lambda prompt: (
+            SKILL_LEVEL_ORDER[prompt.skill_level],
+            prompt.display_name.casefold(),
+            prompt.display_name,
+            prompt.prompt_id,
+        ),
     )
     return InterviewCatalogResponse(interviews=[public_interview_metadata(prompt) for prompt in ordered_prompts])
 
@@ -291,10 +242,5 @@ def public_interview_metadata(prompt: InterviewPrompt) -> InterviewCatalogItem:
     return InterviewCatalogItem(
         packet_id=prompt.prompt_id,
         title=prompt.display_name,
-        summary=prompt.summary,
-        question_number=prompt.question_number,
         skill_level=prompt.skill_level,
-        difficulty=prompt.difficulty,
-        focus=list(prompt.focus),
-        tags=list(prompt.tags),
     )

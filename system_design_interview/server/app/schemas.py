@@ -49,12 +49,7 @@ class InterviewCatalogItem(BaseModel):
 
     packet_id: str = Field(alias="packetId")
     title: str
-    summary: str
-    question_number: int = Field(alias="questionNumber")
     skill_level: Literal["Intern", "Junior", "Senior"] = Field(alias="skillLevel")
-    difficulty: Literal["Beginner", "Intermediate", "Advanced"]
-    focus: list[str]
-    tags: list[str]
 
 
 class InterviewCatalogResponse(BaseModel):

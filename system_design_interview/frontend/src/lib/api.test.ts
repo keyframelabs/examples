@@ -14,50 +14,41 @@ describe("interview API", () => {
         {
           packetId: "google-calendar-system-design",
           title: "Google Calendar",
-          summary: "Design calendar storage.",
-          questionNumber: 7,
-          skillLevel: "Junior",
-          difficulty: "Intermediate",
-          focus: ["Relational schema"],
-          tags: ["databases"]
+          skillLevel: "Junior"
         }
       ]
     }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getInterviewPackets()).resolves.toEqual([
-      expect.objectContaining({
+      {
         packetId: "google-calendar-system-design",
+        title: "Google Calendar",
         skillLevel: "Junior"
-      })
+      }
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8788/api/interviews"
     );
   });
 
-  it("accepts intern packets with beginner difficulty", async () => {
+  it("accepts intern packets", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse({
       interviews: [
         {
           packetId: "pastebin-system-design",
           title: "Pastebin",
-          summary: "Store and retrieve text pastes.",
-          questionNumber: 4,
-          skillLevel: "Intern",
-          difficulty: "Beginner",
-          focus: ["Data model"],
-          tags: ["databases"]
+          skillLevel: "Intern"
         }
       ]
     })));
 
     await expect(getInterviewPackets()).resolves.toEqual([
-      expect.objectContaining({
+      {
         packetId: "pastebin-system-design",
-        skillLevel: "Intern",
-        difficulty: "Beginner"
-      })
+        title: "Pastebin",
+        skillLevel: "Intern"
+      }
     ]);
   });
 
@@ -71,12 +62,7 @@ describe("interview API", () => {
           {
             packetId: "google-calendar-system-design",
             title: "Google Calendar",
-            summary: "Design calendar storage.",
-            questionNumber: 7,
-            skillLevel: "Junior",
-            difficulty: "Intermediate",
-            focus: ["Relational schema"],
-            tags: ["databases"]
+            skillLevel: "Junior"
           }
         ]
       }));

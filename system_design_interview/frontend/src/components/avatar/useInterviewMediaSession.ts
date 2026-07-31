@@ -24,10 +24,15 @@ import {
   stopMediaStream,
   userCameraErrorMessage
 } from "@/utils/interview/userCamera";
+import {
+  createInterviewDeadline,
+  INTERVIEW_DURATION_MS,
+  interviewTimeRemaining
+} from "@/utils/interview/interviewTimer";
 
 export type InterviewStartup = {
   cameraRequest: Promise<MediaStream>;
-  liveSessionRequest?: Promise<LiveSessionResponse>;
+  liveSessionRequest: Promise<LiveSessionResponse>;
 };
 
 export type CameraStatus =
@@ -59,6 +64,8 @@ export function useInterviewMediaSession({
   const latestCanvasTextRef = useRef(canvasText);
   const lastLoggedContextVersionRef = useRef(0);
   const lastLoggedContextErrorRef = useRef<string | null>(null);
+  const interviewDeadlineRef = useRef<number | null>(null);
+  const hasInterviewExpiredRef = useRef(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isEndingCall, setIsEndingCall] = useState(false);
@@ -67,6 +74,12 @@ export function useInterviewMediaSession({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [interviewDeadline, setInterviewDeadline] = useState<number | null>(
+    null
+  );
+  const [interviewTimeRemainingMs, setInterviewTimeRemainingMs] = useState(
+    INTERVIEW_DURATION_MS
+  );
   const [events, setEvents] = useState<string[]>([]);
   const [canvasSyncStatus, setCanvasSyncStatus] = useState<CanvasSyncStatus>(
     INITIAL_CANVAS_SYNC_STATUS
@@ -111,19 +124,37 @@ export function useInterviewMediaSession({
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      if (startup.liveSessionRequest) {
-        void joinInterview(startup);
-      } else {
-        void enableCamera(startup.cameraRequest);
-      }
+      void joinInterview(startup);
     });
 
     return () => window.cancelAnimationFrame(frame);
   }, [startup]);
 
+  useEffect(() => {
+    if (interviewDeadline === null) return;
+
+    let interval: number | undefined;
+
+    const updateTimer = () => {
+      const remaining = interviewTimeRemaining(interviewDeadline, Date.now());
+      setInterviewTimeRemainingMs(remaining);
+      if (remaining > 0 || hasInterviewExpiredRef.current) return;
+
+      if (interval !== undefined) window.clearInterval(interval);
+      hasInterviewExpiredRef.current = true;
+      void disconnectLyra();
+    };
+
+    updateTimer();
+    interval = window.setInterval(updateTimer, 250);
+    return () => window.clearInterval(interval);
+  }, [interviewDeadline]);
+
   async function connect(
     liveSessionRequest = createLiveSession(packet.packetId)
   ) {
+    if (hasInterviewExpiredRef.current) return;
+
     setAvatarError(null);
     setHasEndedCall(false);
     setEvents([]);
@@ -135,7 +166,7 @@ export function useInterviewMediaSession({
     try {
       await cleanupRuntime();
       const liveSession = await liveSessionRequest;
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || hasInterviewExpiredRef.current) return;
       const container = personaContainerRef.current;
       if (!container) throw new Error("Avatar container is not ready.");
 
@@ -184,6 +215,10 @@ export function useInterviewMediaSession({
       logEvent("Connecting Lyra");
       await view.connect();
       if (!isMountedRef.current) return;
+      if (hasInterviewExpiredRef.current) {
+        await cleanupRuntime();
+        return;
+      }
       if (view.status !== "connected") {
         throw new Error(connectError ?? "Lyra failed to connect.");
       }
@@ -204,6 +239,14 @@ export function useInterviewMediaSession({
       contextSync.start();
       logEvent("Canvas context sync started");
       setIsConnected(true);
+      if (interviewDeadlineRef.current === null) {
+        const deadline = createInterviewDeadline(Date.now());
+        interviewDeadlineRef.current = deadline;
+        setInterviewDeadline(deadline);
+        setInterviewTimeRemainingMs(
+          interviewTimeRemaining(deadline, Date.now())
+        );
+      }
       logEvent("Lyra connected");
     } catch (error) {
       if (!isMountedRef.current) return;
@@ -308,6 +351,8 @@ export function useInterviewMediaSession({
   }
 
   function toggleLyra() {
+    if (hasInterviewExpiredRef.current) return;
+
     if (isConnected) {
       void disconnectLyra();
       return;
@@ -404,6 +449,8 @@ export function useInterviewMediaSession({
     avatarError,
     cameraError,
     cameraStatus,
+    interviewTimeRemainingMs,
+    hasInterviewExpired: hasInterviewExpiredRef.current,
     events,
     canvasSyncStatus,
     joinInterview,

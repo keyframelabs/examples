@@ -6,12 +6,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 DEFAULT_INTERVIEW_PROMPT_ID = "tinyurl-system-design"
-DEFAULT_TURN_TIMEOUT_SECONDS = 15
-DEFAULT_TURN_EAGERNESS = "normal"
-LYRA_FIRST_MESSAGE = "Hi, Taylor. I'm Lyra. Have you done a system design interview in the past?"
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 PROMPT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -21,53 +18,23 @@ PROMPT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 class InterviewPrompt:
     prompt_id: str
     display_name: str
-    summary: str
-    question_number: int
     skill_level: Literal["Intern", "Junior", "Senior"]
-    difficulty: Literal["Beginner", "Intermediate", "Advanced"]
-    focus: tuple[str, ...]
-    tags: tuple[str, ...]
     prompt: str
     source_path: Path
 
 
 class InterviewPromptMetadata(BaseModel):
-    id: str = Field(strict=True)
-    display_name: str = Field(strict=True)
-    summary: str = Field(strict=True)
-    question_number: int = Field(strict=True, gt=0)
+    display_name: str
     skill_level: Literal["Intern", "Junior", "Senior"]
-    difficulty: Literal["Beginner", "Intermediate", "Advanced"]
-    focus: list[str] = Field(min_length=1)
-    tags: list[str] = Field(min_length=1)
 
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("id")
+    @field_validator("display_name")
     @classmethod
-    def validate_id(cls, value: str) -> str:
-        if not value or value != value.strip():
-            raise ValueError("must be a nonempty string without surrounding whitespace")
-        if not PROMPT_ID_PATTERN.fullmatch(value):
-            raise ValueError("must use kebab-case with lowercase letters and numbers")
-        return value
-
-    @field_validator("display_name", "summary")
-    @classmethod
-    def validate_public_text(cls, value: str) -> str:
+    def validate_display_name(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("must be a nonempty string")
         return value.strip()
-
-    @field_validator("focus", "tags")
-    @classmethod
-    def validate_public_list(cls, value: list[str]) -> list[str]:
-        normalized = [item.strip() for item in value]
-        if any(not item for item in normalized):
-            raise ValueError("items must be nonempty strings")
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("items must be unique")
-        return normalized
 
 
 class InterviewPromptValidationError(ValueError):
@@ -75,6 +42,10 @@ class InterviewPromptValidationError(ValueError):
 
 
 def load_interview_prompt(path: Path) -> InterviewPrompt:
+    prompt_id = path.stem
+    if not PROMPT_ID_PATTERN.fullmatch(prompt_id):
+        raise ValueError("filename stem must use kebab-case with lowercase letters and numbers")
+
     try:
         source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
@@ -87,14 +58,9 @@ def load_interview_prompt(path: Path) -> InterviewPrompt:
         raise ValueError("Markdown prompt body must not be empty")
 
     return InterviewPrompt(
-        prompt_id=metadata.id,
+        prompt_id=prompt_id,
         display_name=metadata.display_name,
-        summary=metadata.summary,
-        question_number=metadata.question_number,
         skill_level=metadata.skill_level,
-        difficulty=metadata.difficulty,
-        focus=tuple(metadata.focus),
-        tags=tuple(metadata.tags),
         prompt=prompt,
         source_path=path,
     )

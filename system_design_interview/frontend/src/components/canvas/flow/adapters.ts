@@ -198,7 +198,7 @@ export function canvasConnectionToFlowEdge(
     selectable: true,
     deletable: true,
     reconnectable: true,
-    interactionWidth: 18,
+    interactionWidth: 28,
     markerEnd: tableRelationship
       ? undefined
       : {

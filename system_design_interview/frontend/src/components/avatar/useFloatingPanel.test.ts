@@ -6,16 +6,68 @@ import {
   initialPanelSize,
   initialPosition
 } from "@/components/avatar/useFloatingPanel";
+import {
+  createCanvasFitViewOptions,
+  measureCanvasRightOcclusion
+} from "@/components/canvas/fitView";
 
 describe("floating avatar panel layout", () => {
-  it("starts below the canvas controls with clear spacing", () => {
-    const viewport = { width: 1200, height: 900 };
+  it("starts at the compact default size below the canvas controls", () => {
+    const viewport = { width: 1200, height: 1000 };
     const size = initialPanelSize(viewport);
+    const position = initialPosition(size.width, size.height, viewport);
 
-    expect(initialPosition(size.width, size.height, viewport)).toEqual({
-      x: 896,
-      y: 78
+    expect(size).toEqual({ width: 320, height: 640 });
+    expect(position).toEqual({ x: 856, y: 78 });
+  });
+
+  it("uses one compact startup size across unconstrained wide viewports", () => {
+    expect(initialPanelSize({ width: 1200, height: 1000 })).toEqual({
+      width: 320,
+      height: 640
     });
+    expect(initialPanelSize({ width: 1920, height: 1080 })).toEqual({
+      width: 320,
+      height: 640
+    });
+  });
+
+  it("keeps the compact default when a shorter viewport can fit it", () => {
+    const viewport = { width: 1456, height: 819 };
+    const size = initialPanelSize(viewport);
+    const position = initialPosition(size.width, size.height, viewport);
+
+    expect(size).toEqual({ width: 320, height: 640 });
+    expect(position).toEqual({ x: 1112, y: 78 });
+  });
+
+  it("reserves exact canvas space for the compact default panel", () => {
+    const viewport = { width: 1456, height: 819 };
+    const size = initialPanelSize(viewport);
+    const position = initialPosition(size.width, size.height, viewport);
+    const occlusion = measureCanvasRightOcclusion(
+      { left: position.x, width: size.width },
+      viewport.width
+    );
+
+    expect(occlusion).toEqual({ inset: 344, viewportWidth: 1456 });
+    expect(createCanvasFitViewOptions(occlusion)).toEqual({
+      padding: {
+        top: "96px",
+        right: "376px",
+        bottom: "32px",
+        left: "32px"
+      }
+    });
+  });
+
+  it("allows the compact panel to grow to the prior maximum width", () => {
+    expect(
+      fitPanelSizeToViewport(
+        { width: 500, height: 1000 },
+        { width: 1200, height: 1000 }
+      )
+    ).toEqual({ width: 404, height: 808 });
   });
 
   it("fits the initial panel within short and narrow viewports", () => {

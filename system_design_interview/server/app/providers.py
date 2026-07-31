@@ -1,33 +1,20 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, TypeVar
-from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
 
-from .interviews.interview_loader import (
-    DEFAULT_TURN_EAGERNESS,
-    DEFAULT_TURN_TIMEOUT_SECONDS,
-    LYRA_FIRST_MESSAGE,
-)
 from .schemas import ElevenLabsSignedUrlResponse, KeyframeSessionDetails
 from .settings import Settings, load_settings
 
 INTERVIEW_PACKET_DYNAMIC_VARIABLE = "interview_packet"
-INTERVIEW_PACKET_PLACEHOLDER = "No interview packet was provided. Do not begin an interview."
 
-logger = logging.getLogger(__name__)
 ModelT = TypeVar("ModelT", bound=BaseModel)
 ProviderJson = Callable[..., Awaitable[dict[str, Any]]]
-AgentPayloadBuilder = Callable[[], dict[str, Any]]
-SettingValidator = Callable[[str | None, str], str]
-AgentUpdater = Callable[..., Awaitable[None]]
-DynamicPromptBuilder = Callable[[], str]
 ProviderResponseParser = Callable[[httpx.Response], Any]
 ProviderErrorExtractor = Callable[[Any, str], str]
 
@@ -89,78 +76,6 @@ async def get_elevenlabs_signed_url(
     )
 
     return model_validator(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
-
-
-async def update_elevenlabs_agent(
-    client: httpx.AsyncClient,
-    api_key: str,
-    agent_id: str,
-    settings: Settings | None = None,
-    *,
-    request_json: ProviderJson,
-    payload_builder: AgentPayloadBuilder,
-) -> None:
-    settings = settings or load_settings()
-    await request_json(
-        client,
-        "PATCH",
-        f"{settings.elevenlabs_api_base_url}/v1/convai/agents/{quote(agent_id, safe='')}",
-        {
-            "Content-Type": "application/json",
-            "xi-api-key": api_key,
-        },
-        payload_builder(),
-        "ElevenLabs agent update failed",
-    )
-
-
-async def sync_elevenlabs_agent(
-    client: httpx.AsyncClient,
-    settings: Settings | None = None,
-    *,
-    setting_validator: SettingValidator,
-    update_agent: AgentUpdater,
-) -> None:
-    settings = settings or load_settings()
-    api_key = setting_validator(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
-    agent_id = setting_validator(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
-    await update_agent(client, api_key, agent_id, settings)
-    logger.info("Synced ElevenLabs agent %s with the dynamic interview packet prompt", agent_id)
-
-
-def build_elevenlabs_agent_update_payload(
-    *,
-    prompt_builder: DynamicPromptBuilder,
-) -> dict[str, Any]:
-    return {
-        "conversation_config": {
-            "agent": {
-                "first_message": LYRA_FIRST_MESSAGE,
-                "disable_first_message_interruptions": True,
-                "dynamic_variables": {
-                    "dynamic_variable_placeholders": {
-                        INTERVIEW_PACKET_DYNAMIC_VARIABLE: INTERVIEW_PACKET_PLACEHOLDER,
-                    }
-                },
-                "prompt": {"prompt": prompt_builder()},
-            },
-            "turn": {
-                "turn_timeout": DEFAULT_TURN_TIMEOUT_SECONDS,
-                "turn_eagerness": DEFAULT_TURN_EAGERNESS,
-            },
-        }
-    }
-
-
-def build_dynamic_elevenlabs_prompt() -> str:
-    return """# Selected interview packet
-
-The complete interview packet for this conversation appears inside `<interview_packet>`. Follow that packet as the
-authoritative interview instructions. Never mention dynamic variables or the packet wrapper to the candidate.
-
-<interview_packet>
-{{interview_packet}}
-</interview_packet>"""
 
 
 async def provider_json(
