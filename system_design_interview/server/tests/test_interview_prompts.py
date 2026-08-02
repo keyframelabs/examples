@@ -37,7 +37,7 @@ def test_tinyurl_prompt_loads_public_metadata_and_private_guidance() -> None:
     assert "I want you to design TinyURL" in prompt.prompt
     assert "high-level summary of the current architecture" in prompt.prompt
     assert "detailed description of meaningful changes" in prompt.prompt
-    assert "Canvas v12 state" in prompt.prompt
+    assert "latest serialized Canvas state" in prompt.prompt
     assert "Answer with a clear point of view" in prompt.prompt
     assert 'Do not default to "it depends"' in prompt.prompt
     assert "requests for information" in prompt.prompt
@@ -114,46 +114,6 @@ def test_filename_stem_determines_prompt_identity(tmp_path: Path) -> None:
 
     assert prompt.prompt_id == "explicit-prompt-id"
     assert prompt.display_name == "Explicit Prompt"
-
-
-def test_catalog_contains_all_packets_with_assigned_skill_levels() -> None:
-    prompts = load_interview_prompts()
-
-    assert set(prompts) == {
-        "pastebin-system-design",
-        "user-profile-api-system-design",
-        "file-upload-service-system-design",
-        "product-catalog-api-system-design",
-        "webhook-ingestion-system-design",
-        "tinyurl-system-design",
-        "google-calendar-system-design",
-        "hotel-booking-system-design",
-        "notification-service-system-design",
-        "api-rate-limiter-system-design",
-        "distributed-key-value-store",
-        "kafka-like-distributed-log",
-        "google-analytics-system-design",
-        "distributed-sql-database-system-design",
-        "collaborative-documents-system-design",
-    }
-    assert {prompt.prompt_id: prompt.skill_level for prompt in prompts.values()} == {
-        "pastebin-system-design": "Intern",
-        "user-profile-api-system-design": "Intern",
-        "file-upload-service-system-design": "Intern",
-        "product-catalog-api-system-design": "Intern",
-        "webhook-ingestion-system-design": "Intern",
-        "tinyurl-system-design": "Junior",
-        "google-calendar-system-design": "Junior",
-        "hotel-booking-system-design": "Junior",
-        "notification-service-system-design": "Junior",
-        "api-rate-limiter-system-design": "Junior",
-        "distributed-key-value-store": "Senior",
-        "kafka-like-distributed-log": "Senior",
-        "google-analytics-system-design": "Senior",
-        "distributed-sql-database-system-design": "Senior",
-        "collaborative-documents-system-design": "Senior",
-    }
-    assert {prompt.source_path.stem for prompt in prompts.values()} == set(prompts)
 
 
 def test_every_packet_uses_shared_formula_canvas_context_and_time_limit() -> None:

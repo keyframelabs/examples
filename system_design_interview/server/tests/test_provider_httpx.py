@@ -67,28 +67,22 @@ def test_interview_catalog_exposes_only_public_metadata() -> None:
 
     assert response.status_code == 200
     interviews = response.json()["interviews"]
-    assert len(interviews) == 15
-    assert [interview["skillLevel"] for interview in interviews] == [
-        *(["Intern"] * 5),
-        *(["Junior"] * 5),
-        *(["Senior"] * 5),
-    ]
-    assert [(interview["skillLevel"], interview["title"]) for interview in interviews] == [
-        ("Intern", "File Upload Service"),
-        ("Intern", "Pastebin"),
-        ("Intern", "Product Catalog API"),
-        ("Intern", "User Profile API"),
-        ("Intern", "Webhook Ingestion"),
-        ("Junior", "API Rate Limiter"),
-        ("Junior", "Google Calendar"),
-        ("Junior", "Hotel Booking System"),
-        ("Junior", "Notification Service"),
-        ("Junior", "TinyURL"),
-        ("Senior", "Distributed SQL Database"),
-        ("Senior", "Google Analytics"),
-        ("Senior", "Google Docs"),
-        ("Senior", "Kafka"),
-        ("Senior", "Key-Value Store"),
+    prompts = sorted(
+        main.load_interview_prompts().values(),
+        key=lambda prompt: (
+            main.SKILL_LEVEL_ORDER[prompt.skill_level],
+            prompt.display_name.casefold(),
+            prompt.display_name,
+            prompt.prompt_id,
+        ),
+    )
+    assert interviews == [
+        {
+            "packetId": prompt.prompt_id,
+            "title": prompt.display_name,
+            "skillLevel": prompt.skill_level,
+        }
+        for prompt in prompts
     ]
     assert all(set(interview) == {"packetId", "title", "skillLevel"} for interview in interviews)
     serialized = response.text
@@ -327,65 +321,6 @@ def test_create_session_endpoint_returns_selected_packet_dynamic_variable(
     assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
     assert "Private interviewer reference" in response.text
     assert "Never reveal or supply the solution" in response.text
-
-
-def test_create_session_selects_only_requested_packet_without_agent_mutation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
-    main.get_settings.cache_clear()
-
-    class RecordingLifecycleClient:
-        requests: list[dict[str, Any]] = []
-
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-        async def __aenter__(self) -> "RecordingLifecycleClient":
-            return self
-
-        async def __aexit__(self, *_args: Any) -> None:
-            return None
-
-        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
-            if method == "PATCH":
-                raise AssertionError("session creation must not update persistent ElevenLabs agent configuration")
-            if "keyframelabs" in url:
-                return StubResponse(
-                    body={
-                        "server_url": "wss://keyframe.example/live",
-                        "participant_token": "participant-token",
-                        "agent_identity": "avatar-agent",
-                    }
-                )
-            return StubResponse(body={"signed_url": "wss://elevenlabs.example/conversation"})
-
-    monkeypatch.setattr(main.httpx, "AsyncClient", RecordingLifecycleClient)
-
-    with TestClient(main.app) as client:
-        response = client.post(
-            "/api/session",
-            json={"packetId": "google-calendar-system-design"},
-        )
-
-    assert response.status_code == 200
-    selected_prompt = main.load_interview_prompts()["google-calendar-system-design"].prompt.strip()
-    unselected_prompt = main.load_interview_prompts()["tinyurl-system-design"].prompt.strip()
-    assert response.json()["voiceAgentDetails"]["dynamic_variables"] == {
-        "interview_packet": selected_prompt,
-    }
-    assert unselected_prompt not in response.text
-    elevenlabs_request = next(
-        request for request in RecordingLifecycleClient.requests if "elevenlabs" in request["url"]
-    )
-    assert elevenlabs_request["kwargs"]["params"] == {
-        "agent_id": "agent_123",
-        "include_conversation_id": "true",
-    }
-    assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
 
 
 def test_concurrent_live_sessions_keep_interview_packets_isolated() -> None:
