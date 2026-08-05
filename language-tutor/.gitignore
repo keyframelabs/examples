@@ -1,0 +1,4 @@
+.env
+openrouter-log.json
+__pycache__/
+*.pyc
