@@ -110,24 +110,24 @@ const toolItems: Array<{
   label: string;
   icon: LucideIcon;
 }> = [
-  { id: "select", label: "Select", icon: MousePointer2 },
-  { id: "service", label: "Service", icon: Square },
-  { id: "database", label: "Database", icon: Database },
-  { id: "table", label: "Table", icon: Table2 },
-  { id: "text", label: "Text", icon: Type },
-  { id: "connector", label: "Connector", icon: ArrowRight }
-];
+    { id: "select", label: "Select", icon: MousePointer2 },
+    { id: "service", label: "Service", icon: Square },
+    { id: "database", label: "Database", icon: Database },
+    { id: "table", label: "Table", icon: Table2 },
+    { id: "text", label: "Text", icon: Type },
+    { id: "connector", label: "Connector", icon: ArrowRight }
+  ];
 
 const cardinalityItems: Array<{
   id: CanvasConnectionCardinality;
   label: string;
   shortLabel: string;
 }> = [
-  { id: "one-to-one", label: "One to one", shortLabel: "1:1" },
-  { id: "one-to-many", label: "One to many", shortLabel: "1:N" },
-  { id: "many-to-one", label: "Many to one", shortLabel: "N:1" },
-  { id: "many-to-many", label: "Many to many", shortLabel: "N:N" }
-];
+    { id: "one-to-one", label: "One to one", shortLabel: "1:1" },
+    { id: "one-to-many", label: "One to many", shortLabel: "1:N" },
+    { id: "many-to-one", label: "Many to one", shortLabel: "N:1" },
+    { id: "many-to-many", label: "Many to many", shortLabel: "N:N" }
+  ];
 
 export function SystemDesignCanvas({
   initialState,
@@ -674,7 +674,7 @@ export function SystemDesignCanvas({
           variant={BackgroundVariant.Dots}
           color="var(--canvas-grid-dot)"
           gap={24}
-          size={1.2}
+          size={2}
         />
         <Controls
           position="bottom-left"

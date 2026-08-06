@@ -1,16 +1,17 @@
 import { PersonaView } from "@keyframelabs/elements";
 import {
   AlertCircle,
+  ArrowLeft,
+  Camera,
   CameraOff,
   ChevronRight,
   GripHorizontal,
   Loader2,
   Maximize2,
-  Mic,
   Minus,
   MoveDiagonal,
-  PhoneOff,
-  X
+  Phone,
+  PhoneOff
 } from "lucide-react";
 import {
   useEffect,
@@ -31,7 +32,11 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip";
-import { createLiveSession } from "@/lib/api";
+import {
+  createLiveSession,
+  type InterviewPacket,
+  type LiveSessionResponse
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   createCanvasContextSync,
@@ -45,6 +50,8 @@ import {
   sendPersonaContext
 } from "@/utils/avatar/personaViewRuntime";
 import {
+  hasLiveVideoTrack,
+  isMissingUserCameraError,
   requestUserCamera,
   stopMediaStream,
   userCameraErrorMessage
@@ -52,15 +59,27 @@ import {
 
 type InterviewStage = "introduction" | "canvas";
 
+export type InterviewStartup = {
+  cameraRequest: Promise<MediaStream>;
+  liveSessionRequest: Promise<LiveSessionResponse>;
+};
+
 type FloatingAvatarWindowProps = {
   canvasText: string;
+  packet: InterviewPacket;
+  startup: InterviewStartup;
   stage: InterviewStage;
   onEnterCanvas: () => void;
-  onReturnToIntroduction: () => void;
+  onReturnToSelection: () => void;
   onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
 };
 
-type CameraStatus = "idle" | "requesting" | "ready" | "unavailable";
+type CameraStatus =
+  | "idle"
+  | "requesting"
+  | "ready"
+  | "unavailable"
+  | "off";
 
 type Position = {
   x: number;
@@ -96,9 +115,11 @@ const CANVAS_TOP_CONTROLS_BOUNDARY = 56;
 
 export function FloatingAvatarWindow({
   canvasText,
+  packet,
+  startup,
   stage,
   onEnterCanvas,
-  onReturnToIntroduction,
+  onReturnToSelection,
   onCanvasSyncStatusChange
 }: FloatingAvatarWindowProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +128,7 @@ export function FloatingAvatarWindow({
   const userCameraStreamRef = useRef<MediaStream | null>(null);
   const runtimeRef = useRef<PersonaViewRuntime | null>(null);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
+  const isMountedRef = useRef(false);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const latestCanvasTextRef = useRef(canvasText);
@@ -119,6 +141,8 @@ export function FloatingAvatarWindow({
   const [minimized, setMinimized] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isEndingCall, setIsEndingCall] = useState(false);
+  const [hasEndedCall, setHasEndedCall] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
@@ -128,6 +152,21 @@ export function FloatingAvatarWindow({
     INITIAL_CANVAS_SYNC_STATUS
   );
   const showConnectionLog = shouldShowConnectionLog();
+  const isCameraOn = cameraStatus === "ready";
+  const isCameraChanging = cameraStatus === "requesting";
+  const cameraToggleLabel = isCameraChanging
+    ? "Turning on camera"
+    : isCameraOn
+      ? "Turn off camera"
+      : "Turn on camera";
+  const isLyraChanging = isConnecting || isEndingCall;
+  const lyraToggleLabel = isEndingCall
+    ? "Turning off Lyra"
+    : isConnecting
+      ? "Turning on Lyra"
+      : isConnected
+        ? "Turn off Lyra"
+        : "Turn on Lyra";
 
   useEffect(() => {
     latestCanvasTextRef.current = canvasText;
@@ -162,7 +201,10 @@ export function FloatingAvatarWindow({
   }, [stage]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerEnd);
       window.removeEventListener("pointercancel", handleWindowPointerEnd);
@@ -176,6 +218,14 @@ export function FloatingAvatarWindow({
       });
     };
   }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void joinInterview(startup);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [startup]);
 
   useEffect(() => {
     if (stage !== "canvas") return;
@@ -200,8 +250,11 @@ export function FloatingAvatarWindow({
     return () => window.removeEventListener("resize", handleResize);
   }, [minimized, stage]);
 
-  async function connect() {
+  async function connect(
+    liveSessionRequest = createLiveSession(packet.packetId)
+  ) {
     setAvatarError(null);
+    setHasEndedCall(false);
     setEvents([]);
     setIsConnecting(true);
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
@@ -210,7 +263,8 @@ export function FloatingAvatarWindow({
 
     try {
       await cleanupRuntime();
-      const liveSession = await createLiveSession();
+      const liveSession = await liveSessionRequest;
+      if (!isMountedRef.current) return;
       const container = personaContainerRef.current;
       if (!container) throw new Error("Avatar container is not ready.");
 
@@ -257,6 +311,7 @@ export function FloatingAvatarWindow({
 
       logEvent("Connecting Lyra");
       await view.connect();
+      if (!isMountedRef.current) return;
       if (view.status !== "connected") {
         throw new Error(connectError ?? "Lyra failed to connect.");
       }
@@ -279,6 +334,7 @@ export function FloatingAvatarWindow({
       setIsConnected(true);
       logEvent("Lyra connected");
     } catch (error) {
+      if (!isMountedRef.current) return;
       try {
         await cleanupRuntime();
       } catch (cleanupError) {
@@ -291,51 +347,101 @@ export function FloatingAvatarWindow({
       setIsConnected(false);
       setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
     } finally {
-      setIsConnecting(false);
+      if (isMountedRef.current) setIsConnecting(false);
     }
   }
 
-  async function enableCamera() {
+  async function enableCamera(cameraRequest?: Promise<MediaStream>) {
     setCameraError(null);
     setCameraStatus("requesting");
 
     try {
-      const stream = await requestUserCamera();
+      const existingStream = userCameraStreamRef.current;
+      if (hasLiveVideoTrack(existingStream)) {
+        setCameraStream(existingStream);
+        setCameraStatus("ready");
+        return;
+      }
+
+      if (existingStream) {
+        stopMediaStream(existingStream);
+        userCameraStreamRef.current = null;
+        setCameraStream(null);
+      }
+
+      const stream = await (cameraRequest ?? requestUserCamera());
+      if (!isMountedRef.current) {
+        stopMediaStream(stream);
+        return;
+      }
       const previousStream = userCameraStreamRef.current;
       userCameraStreamRef.current = stream;
       setCameraStream(stream);
       setCameraStatus("ready");
       if (previousStream !== stream) stopMediaStream(previousStream);
     } catch (error) {
+      if (!isMountedRef.current) return;
       setCameraStatus("unavailable");
-      showCameraError(userCameraErrorMessage(error));
+      if (isMissingUserCameraError(error)) {
+        setCameraError(null);
+      } else {
+        showCameraError(userCameraErrorMessage(error));
+      }
     }
   }
 
-  function disconnectVideo() {
-    stopMediaStream(userCameraStreamRef.current);
+  async function joinInterview(initialStartup?: InterviewStartup) {
+    const tasks: Promise<void>[] = [];
+    if (cameraStatus !== "ready") {
+      tasks.push(enableCamera(initialStartup?.cameraRequest));
+    }
+    if (!isConnected) {
+      tasks.push(connect(initialStartup?.liveSessionRequest));
+    }
+    await Promise.allSettled(tasks);
+  }
+
+  function disableCamera() {
+    const stream = userCameraStreamRef.current;
+    stopMediaStream(stream);
     userCameraStreamRef.current = null;
     setCameraStream(null);
-    setCameraStatus("idle");
+    setCameraStatus("off");
     setCameraError(null);
   }
 
-  async function joinInterview() {
-    const tasks: Promise<void>[] = [];
-    if (cameraStatus !== "ready") tasks.push(enableCamera());
-    if (!isConnected) tasks.push(connect());
-    await Promise.allSettled(tasks);
+  function toggleCamera() {
+    if (isCameraOn) {
+      disableCamera();
+      return;
+    }
+
+    void enableCamera();
   }
 
   async function disconnectLyra() {
     setAvatarError(null);
+    setHasEndedCall(true);
+    setIsEndingCall(true);
+
     try {
       await cleanupRuntime();
     } catch (error) {
       showAvatarError(
-        `Could not cleanly disconnect Lyra: ${formatAvatarError(error)}`
+        `Could not cleanly end the call: ${formatAvatarError(error)}`
       );
+    } finally {
+      if (isMountedRef.current) setIsEndingCall(false);
     }
+  }
+
+  function toggleLyra() {
+    if (isConnected) {
+      void disconnectLyra();
+      return;
+    }
+
+    void connect();
   }
 
   async function cleanupRuntime() {
@@ -641,15 +747,17 @@ export function FloatingAvatarWindow({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  className="size-7"
-                  aria-label="Exit canvas and return to introduction"
-                  onClick={onReturnToIntroduction}
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={onReturnToSelection}
                 >
-                  <X size={14} />
+                  <ArrowLeft className="size-3.5" />
+                  Interview packets
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Exit canvas</TooltipContent>
+              <TooltipContent side="bottom">
+                End interview and choose another packet
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </Card>
@@ -659,7 +767,7 @@ export function FloatingAvatarWindow({
         className={cn(
           "fixed z-40",
           intro
-            ? "inset-0 overflow-y-auto bg-canvas-paper"
+            ? "inset-0 overflow-y-auto bg-canvas-paper px-4 sm:px-6 lg:px-8"
             : "left-0 top-0"
         )}
         style={
@@ -671,7 +779,7 @@ export function FloatingAvatarWindow({
         <div
           className={cn(
             intro &&
-            "mx-auto grid min-h-full w-full max-w-7xl grid-rows-[1fr_auto_1fr] px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+            "mx-auto grid min-h-full w-full max-w-7xl grid-rows-[1fr_auto_1fr] border-x border-border/50 px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
           )}
         >
           {intro ? (
@@ -680,8 +788,25 @@ export function FloatingAvatarWindow({
                 Ace your next system design interview
               </h1>
               <p className="mx-auto mt-3 max-w-2xl font-sans text-sm leading-6 text-muted-foreground sm:text-base">
-                Practice designing tinyurl with Lyra
+                Practice {packet.title} with Lyra
               </p>
+              {!isConnected && !avatarError ? (
+                <p
+                  className="mx-auto mt-1 max-w-2xl text-xs text-muted-foreground"
+                  role="status"
+                >
+                  Allow camera and microphone access when your browser asks.
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={onReturnToSelection}
+              >
+                Choose a different packet
+              </Button>
             </div>
           ) : null}
 
@@ -791,38 +916,50 @@ export function FloatingAvatarWindow({
                   {cameraStatus !== "ready" ? (
                     <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
                       <PersonPlaceholder />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="relative z-10 shadow-lg"
-                        disabled={cameraStatus === "requesting"}
-                        onClick={() => void enableCamera()}
+                      <div
+                        className="relative z-10 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground shadow-lg"
+                        role="status"
                       >
                         {cameraStatus === "requesting" ? (
                           <Loader2 className="size-4 animate-spin" />
                         ) : null}
                         {cameraStatus === "requesting"
-                          ? "Requesting camera"
+                          ? "Waiting for camera permission"
                           : cameraStatus === "unavailable"
-                            ? "Retry camera"
-                            : "Enable camera"}
-                      </Button>
+                            ? "Camera unavailable"
+                            : cameraStatus === "off"
+                              ? "Camera off"
+                              : "Preparing camera"}
+                      </div>
                     </div>
                   ) : null}
-                  {cameraStatus === "ready" ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon-sm"
-                      className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
-                      aria-label="Disconnect video"
-                      title="Disconnect video"
-                      onClick={disconnectVideo}
-                    >
-                      <CameraOff className="size-4" />
-                    </Button>
-                  ) : null}
+                  <TooltipProvider delayDuration={250}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="icon-sm"
+                          className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
+                          aria-label={cameraToggleLabel}
+                          aria-pressed={isCameraOn}
+                          disabled={isCameraChanging}
+                          onClick={toggleCamera}
+                        >
+                          {isCameraChanging ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : isCameraOn ? (
+                            <CameraOff className="size-4" />
+                          ) : (
+                            <Camera className="size-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        {cameraToggleLabel}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <div
                     className={cn(
                       "absolute bottom-2 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm",
@@ -856,34 +993,50 @@ export function FloatingAvatarWindow({
                   {!isConnected ? (
                     <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
                       <PersonPlaceholder />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="relative z-10 shadow-lg"
-                        disabled={isConnecting}
-                        onClick={() => void connect()}
+                      <div
+                        className="relative z-10 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground shadow-lg"
+                        role="status"
                       >
                         {isConnecting ? (
                           <Loader2 className="size-4 animate-spin" />
                         ) : null}
-                        {isConnecting ? "Lyra is joining" : "Connect Lyra"}
-                      </Button>
+                        {avatarError
+                          ? "Lyra is unavailable"
+                          : isConnecting
+                            ? "Lyra is joining"
+                            : hasEndedCall
+                              ? "Call ended"
+                              : "Preparing Lyra"}
+                      </div>
                     </div>
                   ) : null}
-                  {isConnected ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon-sm"
-                      className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
-                      aria-label="Disconnect Lyra"
-                      title="Disconnect Lyra"
-                      onClick={() => void disconnectLyra()}
-                    >
-                      <PhoneOff className="size-4" />
-                    </Button>
-                  ) : null}
+                  <TooltipProvider delayDuration={250}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="icon-sm"
+                          className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
+                          aria-label={lyraToggleLabel}
+                          aria-pressed={isConnected}
+                          disabled={isLyraChanging}
+                          onClick={toggleLyra}
+                        >
+                          {isLyraChanging ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : isConnected ? (
+                            <PhoneOff className="size-4" />
+                          ) : (
+                            <Phone className="size-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        {lyraToggleLabel}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <div
                     className={cn(
                       "absolute bottom-2 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm",
@@ -898,43 +1051,31 @@ export function FloatingAvatarWindow({
 
             {intro ? (
               <div className="border-t border-border p-3">
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  {isConnected ? (
-                    <Button
-                      type="button"
-                      className="flex-1 font-semibold"
-                      onClick={onEnterCanvas}
-                    >
-                      Open design canvas
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      className="flex-1 font-semibold"
-                      onClick={() => void joinInterview()}
-                      disabled={isConnecting || cameraStatus === "requesting"}
-                    >
-                      {isConnecting || cameraStatus === "requesting" ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Mic className="size-4" />
-                      )}
-                      Join interview
-                    </Button>
-                  )}
-                  {!isConnected ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 font-semibold"
-                      onClick={onEnterCanvas}
-                    >
-                      Open canvas without joining
-                      <ChevronRight className="size-4" />
-                    </Button>
+                <Button
+                  type="button"
+                  className="w-full font-semibold"
+                  onClick={
+                    isConnected
+                      ? onEnterCanvas
+                      : () => void joinInterview()
+                  }
+                  disabled={
+                    !isConnected &&
+                    (!avatarError ||
+                      isConnecting ||
+                      cameraStatus === "requesting")
+                  }
+                >
+                  {!isConnected && !avatarError ? (
+                    <Loader2 className="size-4 animate-spin" />
                   ) : null}
-                </div>
+                  {isConnected
+                    ? "Open design canvas"
+                    : avatarError
+                      ? "Retry interview"
+                      : "Starting interview"}
+                  {isConnected ? <ChevronRight className="size-4" /> : null}
+                </Button>
               </div>
             ) : null}
 

@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
-import { FloatingAvatarWindow } from "@/components/avatar/FloatingAvatarWindow";
+import {
+  FloatingAvatarWindow,
+  type InterviewStartup
+} from "@/components/avatar/FloatingAvatarWindow";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
 import { createEmptyCanvasState } from "@/components/canvas/model/state";
 import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
+import { InterviewPacketLanding } from "@/components/interview/InterviewPacketLanding";
+import {
+  createLiveSession,
+  type InterviewPacket
+} from "@/lib/api";
 import {
   INITIAL_CANVAS_SYNC_STATUS,
   type CanvasSyncStatus
@@ -13,13 +21,24 @@ import {
   registerSessionLossWarning,
   shouldWarnAboutSessionLoss
 } from "@/utils/sessionLossWarning";
+import { requestUserCamera } from "@/utils/interview/userCamera";
 
 const EMPTY_CANVAS_TEXT = serializeCanvasToText(createEmptyCanvasState()).text;
 
+type InterviewStage = "selection" | "introduction" | "canvas";
+
+// Keep the side-by-side introduction implemented but dormant until KEY-97 can
+// use the js/elements tool-call support tracked by KEY-23.
+const INTERVIEW_ENTRY_STAGE: Exclude<InterviewStage, "selection"> = "canvas";
+
 export function App() {
-  const [interviewStage, setInterviewStage] = useState<
-    "introduction" | "canvas"
-  >("introduction");
+  const [interviewStage, setInterviewStage] =
+    useState<InterviewStage>("selection");
+  const [selectedPacket, setSelectedPacket] = useState<InterviewPacket | null>(
+    null
+  );
+  const [interviewStartup, setInterviewStartup] =
+    useState<InterviewStartup | null>(null);
   const [canvasSessionId, setCanvasSessionId] = useState(0);
   const [canvasText, setCanvasText] = useState(EMPTY_CANVAS_TEXT);
   const [hasCanvasEdits, setHasCanvasEdits] = useState(false);
@@ -41,11 +60,30 @@ export function App() {
     [canvasSessionId]
   );
 
-  const handleReturnToIntroduction = useCallback(() => {
-    setInterviewStage("introduction");
+  const handleReturnToSelection = useCallback(() => {
+    setInterviewStage("selection");
+    setSelectedPacket(null);
+    setInterviewStartup(null);
     setCanvasSessionId((current) => current + 1);
     setCanvasText(EMPTY_CANVAS_TEXT);
     setHasCanvasEdits(false);
+    setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
+  }, []);
+
+  const handleStartInterview = useCallback((packet: InterviewPacket) => {
+    const cameraRequest = requestUserCamera();
+    const liveSessionRequest = createLiveSession(packet.packetId);
+    void cameraRequest.catch(() => undefined);
+    void liveSessionRequest.catch(() => undefined);
+
+    const startup = {
+      cameraRequest,
+      liveSessionRequest
+    };
+
+    setSelectedPacket(packet);
+    setInterviewStartup(startup);
+    setInterviewStage(INTERVIEW_ENTRY_STAGE);
   }, []);
 
   useEffect(() => {
@@ -85,13 +123,23 @@ export function App() {
         />
       </div>
 
-      <FloatingAvatarWindow
-        canvasText={canvasText}
-        stage={interviewStage}
-        onEnterCanvas={() => setInterviewStage("canvas")}
-        onReturnToIntroduction={handleReturnToIntroduction}
-        onCanvasSyncStatusChange={setCanvasSyncStatus}
-      />
+      {interviewStage === "selection" ? (
+        <InterviewPacketLanding
+          onStartInterview={handleStartInterview}
+        />
+      ) : null}
+
+      {interviewStage !== "selection" && selectedPacket && interviewStartup ? (
+        <FloatingAvatarWindow
+          canvasText={canvasText}
+          packet={selectedPacket}
+          startup={interviewStartup}
+          stage={interviewStage}
+          onEnterCanvas={() => setInterviewStage("canvas")}
+          onReturnToSelection={handleReturnToSelection}
+          onCanvasSyncStatusChange={setCanvasSyncStatus}
+        />
+      ) : null}
     </main>
   );
 }

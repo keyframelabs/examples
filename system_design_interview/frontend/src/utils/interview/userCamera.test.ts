@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  hasLiveVideoTrack,
+  isMissingUserCameraError,
   requestUserCamera,
   stopMediaStream,
   userCameraErrorMessage
@@ -41,6 +43,17 @@ describe("stopMediaStream", () => {
   });
 });
 
+describe("hasLiveVideoTrack", () => {
+  it("does not reuse a stream whose video tracks have ended", () => {
+    const stream = {
+      getVideoTracks: () => [{ readyState: "ended" }]
+    } as unknown as MediaStream;
+
+    expect(hasLiveVideoTrack(stream)).toBe(false);
+    expect(hasLiveVideoTrack(null)).toBe(false);
+  });
+});
+
 describe("userCameraErrorMessage", () => {
   it("explains that denied camera access is optional", () => {
     expect(userCameraErrorMessage({ name: "NotAllowedError" })).toContain(
@@ -52,5 +65,15 @@ describe("userCameraErrorMessage", () => {
     expect(userCameraErrorMessage(new Error("Camera service failed"))).toBe(
       "Camera service failed"
     );
+  });
+});
+
+describe("isMissingUserCameraError", () => {
+  it("recognizes browser errors that mean no camera is present", () => {
+    expect(isMissingUserCameraError({ name: "NotFoundError" })).toBe(true);
+    expect(isMissingUserCameraError({ name: "DevicesNotFoundError" })).toBe(
+      true
+    );
+    expect(isMissingUserCameraError({ name: "NotAllowedError" })).toBe(false);
   });
 });

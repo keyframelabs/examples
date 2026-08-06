@@ -2,3 +2,5 @@ packages:
   - "frontend"
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@keyframelabs/elements@0.6.1'
