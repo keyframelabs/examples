@@ -3,9 +3,7 @@ import type { PointerEvent } from "react";
 import type { SystemNodeData } from "@/components/canvas/flow/adapters";
 import { InlineInput } from "@/components/canvas/flow/NodeTextControls";
 import { NODE_COLORS } from "@/components/canvas/flow/nodeStyles";
-import {
-  TABLE_FIELD_HEIGHT
-} from "@/components/canvas/model/state";
+import { TABLE_FIELD_HEIGHT } from "@/components/canvas/model/tableLayout";
 import type {
   CanvasField,
   CanvasTableNode
@@ -44,7 +42,7 @@ export function TableNode({
           onBlur={data.onEditEnd}
           onEditComplete={data.onEditComplete}
           onChange={(value) => data.onLabelChange(node.id, value)}
-          className="text-[14px] font-bold"
+          className="text-lg font-bold"
         />
       </div>
       <div className="px-2 pt-[10px] text-[12px] text-canvas-node-service-foreground">
@@ -96,7 +94,7 @@ function TableFieldRow({
         onBlur={data.onEditEnd}
         onEditComplete={data.onEditComplete}
         onChange={(value) => data.onFieldTextChange(tableId, field.id, value)}
-        className="min-w-0 flex-1 text-[12px]"
+        className="min-w-0 flex-1 text-sm"
       />
       <KeyToggle
         label="PK"

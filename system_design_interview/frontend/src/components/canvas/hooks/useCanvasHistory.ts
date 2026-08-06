@@ -13,10 +13,10 @@ interface CanvasHistory {
   isDirty: boolean;
 }
 
-export function useCanvasHistory(initialState?: CanvasState) {
+export function useCanvasHistory() {
   const [history, setHistory] = useState<CanvasHistory>({
     past: [],
-    present: initialState ?? createEmptyCanvasState(),
+    present: createEmptyCanvasState(),
     future: [],
     isDirty: false
   });
@@ -61,10 +61,6 @@ export function useCanvasHistory(initialState?: CanvasState) {
     );
   }, []);
 
-  const replacePresent = useCallback((state: CanvasState) => {
-    setHistory((current) => ({ ...current, present: state }));
-  }, []);
-
   const undo = useCallback(() => {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -97,7 +93,6 @@ export function useCanvasHistory(initialState?: CanvasState) {
     applyEphemeral,
     commitSnapshot,
     markDirty,
-    replacePresent,
     undo,
     redo,
     canUndo: history.past.length > 0,

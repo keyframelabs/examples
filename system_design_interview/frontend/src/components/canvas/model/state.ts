@@ -13,13 +13,6 @@ import {
 import { resolveCanvasCollisions } from "@/components/canvas/model/collisions";
 import { tableHeightForFields } from "@/components/canvas/model/tableLayout";
 
-export {
-  TABLE_FIELD_HEIGHT,
-  TABLE_FIELD_TOP,
-  TABLE_HEADER_HEIGHT,
-  tableHeightForFields
-} from "@/components/canvas/model/tableLayout";
-
 export type CanvasAction =
   | { type: "add-node"; node: CanvasNode; select?: boolean }
   | { type: "add-connection"; connection: CanvasConnection; select?: boolean }
@@ -34,8 +27,6 @@ export type CanvasAction =
         height?: number;
       }>;
     }
-  | { type: "move-elements"; ids: string[]; dx: number; dy: number }
-  | { type: "resize-node"; id: string; width: number; height: number }
   | { type: "remove-table-field"; tableId: string; fieldId: string }
   | { type: "delete-elements"; ids: string[] }
   | { type: "settle-collisions"; pinnedIds?: string[] }
@@ -56,7 +47,7 @@ const DEFAULT_NODE_SIZE: Record<NodeKind, { width: number; height: number }> = {
 
 let idCounter = 0;
 
-export function createId(prefix: string): string {
+function createId(prefix: string): string {
   idCounter += 1;
   const uuid = globalThis.crypto?.randomUUID?.();
   return uuid
@@ -158,7 +149,8 @@ export function createConnection(
     fromFieldSide: options.fromFieldSide,
     toFieldSide: options.toFieldSide,
     cardinality: options.cardinality ?? "one-to-one",
-    label
+    label,
+    labelSize: "large"
   };
 }
 
@@ -231,38 +223,6 @@ export function canvasReducer(
       }
 
       return elements ? { ...state, elements } : state;
-    }
-    case "move-elements": {
-      const ids = new Set(action.ids);
-      const elements = { ...state.elements };
-      for (const id of ids) {
-        const element = elements[id];
-        if (!element || element.kind === "connection") continue;
-        elements[id] = {
-          ...element,
-          x: element.x + action.dx,
-          y: element.y + action.dy
-        };
-      }
-      return { ...state, elements };
-    }
-    case "resize-node": {
-      const element = state.elements[action.id];
-      if (!element || element.kind === "connection") return state;
-      return {
-        ...state,
-        elements: {
-          ...state.elements,
-          [action.id]: {
-            ...element,
-            width: Math.max(80, action.width),
-            height:
-              element.kind === "table"
-                ? Math.max(tableHeightForFields(element.fields), action.height)
-                : Math.max(44, action.height)
-          }
-        }
-      };
     }
     case "remove-table-field": {
       const table = state.elements[action.tableId];
@@ -370,32 +330,6 @@ export function canvasReducer(
 function sameIds(first: string[], second: string[]): boolean {
   if (first.length !== second.length) return false;
   return first.every((id, index) => id === second[index]);
-}
-
-export function parseTableEditorValue(
-  value: string,
-  existingFields: CanvasField[] = []
-): {
-  label: string;
-  fields: CanvasField[];
-} {
-  const lines = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const label = lines[0] ?? "";
-  const fields = lines.slice(1).map((text, index) => ({
-    id: existingFields[index]?.id ?? `field_${index + 1}`,
-    text,
-    primaryKey: existingFields[index]?.primaryKey ?? false,
-    foreignKey: existingFields[index]?.foreignKey ?? false
-  }));
-
-  return {
-    label,
-    fields: fields.length > 0 ? fields : defaultFields()
-  };
 }
 
 function normalizeElementGeometry<T extends CanvasElement>(element: T): T {

@@ -25,16 +25,12 @@ describe("React Flow canvas adapters", () => {
       }),
       id: "c1"
     };
-    const withNodes = [api, db].reduce(
-      (state, node) =>
-        canvasReducer(state, { type: "add-node", node, select: false }),
-      createEmptyCanvasState()
-    );
-    const state = canvasReducer(withNodes, {
-      type: "add-connection",
-      connection,
-      select: true
-    });
+    const state = {
+      ...createEmptyCanvasState(),
+      elements: { api, db, c1: connection },
+      order: ["api", "db", "c1"],
+      selectedIds: ["c1"]
+    };
 
     const flow = canvasStateToFlowElements(state, adapterOptions());
 
@@ -54,7 +50,8 @@ describe("React Flow canvas adapters", () => {
       target: "db",
       sourceHandle: "anchor:bottom-right",
       targetHandle: "anchor:top-left",
-      selected: true
+      selected: true,
+      interactionWidth: 28
     });
   });
 

@@ -6,9 +6,9 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8788";
 const INTERVIEW_CATALOG_RETRY_DELAYS_MS = [250, 500, 1000, 2000] as const;
 
-export type KeyframeSessionDetails = SessionDetails;
+type KeyframeSessionDetails = SessionDetails;
 
-export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
+type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   type: "elevenlabs";
   agent_id: string;
   signed_url: string;
@@ -20,18 +20,12 @@ export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
 export type LiveSessionResponse = {
   sessionDetails: KeyframeSessionDetails;
   voiceAgentDetails: VoiceAgentDetails;
-  conversationId?: string;
 };
 
 export type InterviewPacket = {
   packetId: string;
   title: string;
-  summary: string;
-  questionNumber: number;
   skillLevel: "Intern" | "Junior" | "Senior";
-  difficulty: "Beginner" | "Intermediate" | "Advanced";
-  focus: string[];
-  tags: string[];
 };
 
 export async function getInterviewPackets(
@@ -39,16 +33,10 @@ export async function getInterviewPackets(
 ): Promise<InterviewPacket[]> {
   const url = `${API_BASE_URL}/api/interviews`;
   const response = await fetchInterviewCatalog(url, signal);
-  const payload = await parseResponse(response);
-  if (!isRecord(payload) || !Array.isArray(payload.interviews)) {
-    throw new Error("Interview catalog response was invalid.");
-  }
-
-  const interviews = payload.interviews.filter(isInterviewPacket);
-  if (interviews.length !== payload.interviews.length) {
-    throw new Error("Interview catalog response was invalid.");
-  }
-  return interviews;
+  const payload = await parseResponse(response) as {
+    interviews: InterviewPacket[];
+  };
+  return payload.interviews;
 }
 
 async function fetchInterviewCatalog(
@@ -125,25 +113,6 @@ export async function createLiveSession(
   return payload;
 }
 
-function isInterviewPacket(value: unknown): value is InterviewPacket {
-  if (!isRecord(value)) return false;
-
-  return (
-    typeof value.packetId === "string" &&
-    typeof value.title === "string" &&
-    typeof value.summary === "string" &&
-    typeof value.questionNumber === "number" &&
-    (value.skillLevel === "Intern" ||
-      value.skillLevel === "Junior" ||
-      value.skillLevel === "Senior") &&
-    (value.difficulty === "Beginner" ||
-      value.difficulty === "Intermediate" ||
-      value.difficulty === "Advanced") &&
-    isStringArray(value.focus) &&
-    isStringArray(value.tags)
-  );
-}
-
 async function parseResponse(response: Response): Promise<unknown> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -173,8 +142,4 @@ function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }

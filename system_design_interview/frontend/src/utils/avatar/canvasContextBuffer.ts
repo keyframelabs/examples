@@ -1,7 +1,7 @@
-export const DEFAULT_CONTEXT_HASH_INTERVAL_MS = 200;
-export const DEFAULT_CONTEXT_SEND_INTERVAL_MS = 1000;
+const DEFAULT_CONTEXT_HASH_INTERVAL_MS = 200;
+const DEFAULT_CONTEXT_SEND_INTERVAL_MS = 1000;
 
-export type CanvasContextBufferSender = (
+type CanvasContextBufferSender = (
   text: string
 ) => void | Promise<void>;
 
@@ -161,7 +161,7 @@ export function createCanvasContextBuffer(
   };
 }
 
-export function hashText(text: string): string {
+function hashText(text: string): string {
   let hash = 0x811c9dc5;
 
   for (let index = 0; index < text.length; index += 1) {

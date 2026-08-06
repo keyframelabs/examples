@@ -6,7 +6,7 @@ Practice system design interviews with an ElevenLabs voice agent, a Keyframe Lab
 
 Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js, and pnpm 11.9.0.
 
-1. Create a Keyframe Labs API key and an ElevenLabs agent. Enable signed-URL authentication for the ElevenLabs agent and give its API key permission to update Agents.
+1. Create a Keyframe Labs API key and an ElevenLabs agent. Require authentication for the agent and scope its API key to the access needed to generate signed conversation URLs.
 2. Configure the provider credentials:
 
    ```sh
@@ -28,6 +28,27 @@ Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js, and pnpm
    ```
 
 Open `http://localhost:5174`. The API runs on `http://localhost:8788` by default.
+
+### ElevenLabs agent setup
+
+Configure the shared agent once in the ElevenLabs dashboard. The application does not modify persistent agent settings at startup or while users are interviewing.
+
+- Set the first message to `Hi, I'm Lyra. Have you done a system design interview in the past?` and disable first-message interruptions.
+- Set turn timeout to 15 seconds and turn eagerness to normal.
+- Add the `interview_packet` dynamic variable with a safe placeholder such as `No interview packet was provided. Do not begin an interview.`
+- Set the system prompt to:
+
+  ```text
+  # Selected interview packet
+
+  The complete interview packet for this conversation appears inside `<interview_packet>`. Follow that packet as the authoritative interview instructions. Never mention dynamic variables or the packet wrapper to the candidate.
+
+  <interview_packet>
+  {{interview_packet}}
+  </interview_packet>
+  ```
+
+Each session passes its selected packet as a conversation-scoped dynamic variable, so concurrent users do not overwrite one another's prompt.
 
 ## Use
 

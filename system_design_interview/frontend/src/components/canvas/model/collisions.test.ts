@@ -5,7 +5,9 @@ import {
   resolveCanvasCollisions
 } from "@/components/canvas/model/collisions";
 import {
+  connectionLabelDimensions,
   connectionLabelRect,
+  connectionRoutingOffset,
   CONNECTION_LABEL_COLLISION_GAP
 } from "@/components/canvas/flow/connectionLabels";
 import {
@@ -17,6 +19,17 @@ import {
 import { isNode } from "@/components/canvas/model/types";
 
 describe("canvas collision settling", () => {
+  it("creates connections with presentation-sized labels", () => {
+    const connection = createConnection("source", "target", "Request");
+
+    expect(connection.labelSize).toBe("large");
+    expect(connectionRoutingOffset(connection)).toBe(32);
+    expect(connectionLabelDimensions(connection)).toEqual({
+      width: 135,
+      height: 36
+    });
+  });
+
   it("separates overlapping nodes while preserving the pinned node", () => {
     const pinned = createNode("service", 0, 0, {
       id: "pinned",
@@ -159,7 +172,7 @@ describe("canvas collision settling", () => {
     expect(resolveCanvasCollisions(settled)).toBe(settled);
   });
 
-  it("keeps a pinned node fixed while its connection makes label space", () => {
+  it("keeps a pinned node fixed while its connection label makes space", () => {
     const source = createNode("service", 0, 0, { id: "source" });
     const target = createNode("service", 260, 0, { id: "target" });
     const connection = createConnection(source.id, target.id, "long request label");
@@ -174,14 +187,22 @@ describe("canvas collision settling", () => {
     };
 
     const settled = resolveCanvasCollisions(state, { pinnedIds: [source.id] });
+    const settledNodes = new Map(
+      settled.order
+        .map((id) => settled.elements[id])
+        .filter(isNode)
+        .map((node) => [node.id, node])
+    );
+    const label = connectionLabelRect(connection, settledNodes);
 
     expect(settled.elements[source.id]).toMatchObject({ x: 0, y: 0 });
-    expect(settled.elements[target.id]).toMatchObject({
-      x: expect.any(Number)
-    });
-    expect((settled.elements[target.id] as typeof target).x).toBeGreaterThan(
-      target.x
-    );
+    expect(label).not.toBeNull();
+    if (!label) return;
+    expect(
+      Array.from(settledNodes.values()).some((node) =>
+        rectanglesOverlap(label, node, CONNECTION_LABEL_COLLISION_GAP)
+      )
+    ).toBe(false);
   });
 });
 

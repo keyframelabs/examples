@@ -23,11 +23,14 @@ const EDGE_LABEL_MAX_WIDTH = 180;
 const EDGE_LABEL_CHARACTER_WIDTH = 7.25;
 const EDGE_LABEL_HORIZONTAL_PADDING = 22;
 const HANDLE_PATH_OFFSET = 5;
+const LARGE_EDGE_LABEL_WIDTH_SCALE = 1.42;
 
-export const CONNECTION_LABEL_HEIGHT = 26;
+const CONNECTION_LABEL_HEIGHT = 26;
+const LARGE_CONNECTION_LABEL_HEIGHT = 36;
 export const CONNECTION_LABEL_COLLISION_GAP = 8;
+const CONNECTION_ROUTING_OFFSET = 32;
 
-export interface ConnectionLabelRect {
+interface ConnectionLabelRect {
   id: string;
   x: number;
   y: number;
@@ -41,7 +44,7 @@ interface EndpointGeometry {
   position: Position;
 }
 
-export function connectionLabelWidth(label: string): number {
+function connectionLabelWidth(label: string): number {
   const estimatedWidth =
     Math.max(label.length, "Flow label".length) *
       EDGE_LABEL_CHARACTER_WIDTH +
@@ -50,6 +53,26 @@ export function connectionLabelWidth(label: string): number {
     EDGE_LABEL_MAX_WIDTH,
     Math.max(EDGE_LABEL_MIN_WIDTH, Math.ceil(estimatedWidth))
   );
+}
+
+export function connectionLabelDimensions(
+  connection: Pick<CanvasConnection, "label" | "labelSize">
+): { width: number; height: number } {
+  const defaultWidth = connectionLabelWidth(connection.label);
+  if (connection.labelSize !== "large") {
+    return { width: defaultWidth, height: CONNECTION_LABEL_HEIGHT };
+  }
+
+  return {
+    width: Math.round(defaultWidth * LARGE_EDGE_LABEL_WIDTH_SCALE),
+    height: LARGE_CONNECTION_LABEL_HEIGHT
+  };
+}
+
+export function connectionRoutingOffset(
+  connection: Pick<CanvasConnection, "routingOffset">
+): number {
+  return connection.routingOffset ?? CONNECTION_ROUTING_OFFSET;
 }
 
 export function connectionLabelRect(
@@ -85,16 +108,16 @@ export function connectionLabelRect(
     targetY: target.y,
     targetPosition: target.position,
     borderRadius: 12,
-    offset: 32
+    offset: connectionRoutingOffset(connection)
   });
-  const width = connectionLabelWidth(connection.label);
+  const { width, height } = connectionLabelDimensions(connection);
 
   return {
     id: `connection-label:${connection.id}`,
     x: labelX - width / 2,
-    y: labelY - CONNECTION_LABEL_HEIGHT / 2,
+    y: labelY - height / 2,
     width,
-    height: CONNECTION_LABEL_HEIGHT
+    height
   };
 }
 

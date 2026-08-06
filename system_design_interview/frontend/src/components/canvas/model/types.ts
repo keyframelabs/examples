@@ -1,6 +1,6 @@
 export const CANVAS_SCHEMA_VERSION = 12;
 
-export type CanvasElementKind =
+type CanvasElementKind =
   | "actor"
   | "service"
   | "database"
@@ -9,7 +9,7 @@ export type CanvasElementKind =
   | "connection";
 
 export type NodeKind = Exclude<CanvasElementKind, "connection">;
-export type ShapeNodeKind = Exclude<NodeKind, "table" | "text">;
+type ShapeNodeKind = Exclude<NodeKind, "table" | "text">;
 
 export interface CanvasField {
   id: string;
@@ -36,7 +36,7 @@ export type CanvasNodeAnchor =
 
 export type CanvasFieldSide = "left" | "right";
 
-export interface CanvasNodeGeometry {
+interface CanvasNodeGeometry {
   id: string;
   x: number;
   y: number;
@@ -46,7 +46,7 @@ export interface CanvasNodeGeometry {
   alias?: string;
 }
 
-export interface CanvasShapeNode extends CanvasNodeGeometry {
+interface CanvasShapeNode extends CanvasNodeGeometry {
   kind: ShapeNodeKind;
 }
 
@@ -57,7 +57,7 @@ export interface CanvasTableNode extends CanvasNodeGeometry {
   databaseId?: string;
 }
 
-export interface CanvasTextNode extends CanvasNodeGeometry {
+interface CanvasTextNode extends CanvasNodeGeometry {
   kind: "text";
   fontSize: number;
 }
@@ -76,6 +76,8 @@ export interface CanvasConnection {
   fromFieldSide?: CanvasFieldSide;
   toFieldSide?: CanvasFieldSide;
   cardinality?: CanvasConnectionCardinality;
+  routingOffset?: number;
+  labelSize?: "default" | "large";
   label: string;
   alias?: string;
 }

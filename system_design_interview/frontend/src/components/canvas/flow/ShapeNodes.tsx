@@ -14,7 +14,7 @@ export function ShapeNode({
 }) {
   return (
     <div
-      className="flex h-full w-full items-center justify-center rounded-lg border-[1.5px] px-3 text-center text-[15px] font-semibold shadow-xs"
+      className="flex h-full w-full items-center justify-center rounded-lg border-[1.5px] px-3 text-center text-lg font-semibold shadow-xs"
       style={{
         background: NODE_COLORS[node.kind].background,
         borderColor: NODE_COLORS[node.kind].foreground
@@ -30,7 +30,7 @@ export function ShapeNode({
         onBlur={data.onEditEnd}
         onEditComplete={data.onEditComplete}
         onChange={(value) => data.onLabelChange(node.id, value)}
-        className="text-center text-[15px] font-semibold"
+        className="text-center text-lg font-semibold"
       />
     </div>
   );
@@ -78,7 +78,7 @@ export function DatabaseNode({
         onBlur={data.onEditEnd}
         onEditComplete={data.onEditComplete}
         onChange={(value) => data.onLabelChange(node.id, value)}
-        className="absolute left-[14px] right-[14px] top-1/2 h-7 w-auto -translate-y-1/2 text-center text-[15px] font-semibold"
+        className="absolute left-[14px] right-[14px] top-1/2 h-7 w-auto -translate-y-1/2 text-center text-lg font-semibold"
       />
     </div>
   );

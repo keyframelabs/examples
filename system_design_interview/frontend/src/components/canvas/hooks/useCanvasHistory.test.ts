@@ -8,8 +8,6 @@ const expectedMeaningByActionType: Record<CanvasAction["type"], boolean> = {
   "add-connection": true,
   "update-element": true,
   "update-node-geometries": true,
-  "move-elements": true,
-  "resize-node": true,
   "remove-table-field": true,
   "delete-elements": true,
   "settle-collisions": true,

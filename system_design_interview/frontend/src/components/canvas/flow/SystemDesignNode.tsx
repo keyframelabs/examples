@@ -8,6 +8,8 @@ import {
 import { memo, useEffect, type CSSProperties } from "react";
 
 import {
+  NODE_ANCHORS,
+  TABLE_NODE_ANCHORS,
   anchorPosition,
   fieldHandleId,
   nodeAnchorHandleId,
@@ -24,32 +26,12 @@ import {
   TABLE_FIELD_HEIGHT,
   TABLE_FIELD_TOP,
   tableHeightForFields
-} from "@/components/canvas/model/state";
+} from "@/components/canvas/model/tableLayout";
 import type {
   CanvasFieldSide,
   CanvasNodeAnchor
 } from "@/components/canvas/model/types";
 import { cn } from "@/lib/utils";
-
-const NODE_ANCHORS: CanvasNodeAnchor[] = [
-  "top-left",
-  "top",
-  "top-right",
-  "right",
-  "bottom-right",
-  "bottom",
-  "bottom-left",
-  "left"
-];
-
-const TABLE_ANCHORS: CanvasNodeAnchor[] = [
-  "top-left",
-  "top",
-  "top-right",
-  "bottom-right",
-  "bottom",
-  "bottom-left"
-];
 
 function SystemDesignNodeComponent({
   id,
@@ -106,7 +88,7 @@ function SystemDesignNodeComponent({
         <ShapeNode node={canvasNode} data={data} />
       )}
 
-      {(canvasNode.kind === "table" ? TABLE_ANCHORS : NODE_ANCHORS).map(
+      {(canvasNode.kind === "table" ? TABLE_NODE_ANCHORS : NODE_ANCHORS).map(
         (anchor) => (
           <CanvasHandle
             key={anchor}

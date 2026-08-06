@@ -2,7 +2,7 @@ import type { PersonaView } from "@keyframelabs/elements";
 
 import type { CanvasContextSync } from "@/utils/avatar/canvasContextSync";
 
-export type PersonaTranscript = {
+type PersonaTranscript = {
   role: "user" | "assistant";
   text: string;
   isFinal: boolean;

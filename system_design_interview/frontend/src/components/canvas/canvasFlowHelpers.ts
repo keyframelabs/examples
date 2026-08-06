@@ -11,9 +11,6 @@ import {
   type CanvasState
 } from "@/components/canvas/model/types";
 
-const CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS = 750;
-const CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS = 120;
-
 export function geometryChanges(
   changes: NodeChange<SystemFlowNode>[],
   state: CanvasState
@@ -56,34 +53,4 @@ export function isTableRelationship(
   to: Exclude<CanvasElement, CanvasConnection>
 ) {
   return from.kind === "table" && to.kind === "table";
-}
-
-export function scheduleCanvasTextSerialization(
-  callback: () => void
-): () => void {
-  if (typeof window === "undefined") {
-    const handle = globalThis.setTimeout(callback, 0);
-    return () => globalThis.clearTimeout(handle);
-  }
-
-  const idleScheduler = window as unknown as {
-    requestIdleCallback?: (
-      callback: IdleRequestCallback,
-      options?: IdleRequestOptions
-    ) => number;
-    cancelIdleCallback?: (handle: number) => void;
-  };
-
-  if (typeof idleScheduler.requestIdleCallback === "function") {
-    const handle = idleScheduler.requestIdleCallback(callback, {
-      timeout: CANVAS_TEXT_SERIALIZATION_TIMEOUT_MS
-    });
-    return () => idleScheduler.cancelIdleCallback?.(handle);
-  }
-
-  const handle = globalThis.setTimeout(
-    callback,
-    CANVAS_TEXT_SERIALIZATION_FALLBACK_DELAY_MS
-  );
-  return () => globalThis.clearTimeout(handle);
 }
