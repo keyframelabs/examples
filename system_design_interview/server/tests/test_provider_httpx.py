@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +101,59 @@ def test_create_session_rejects_unknown_packet_before_provider_calls() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"error": "Unknown interview packet: not-a-packet"}
+
+
+def test_create_session_uses_main_provider_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested_settings: list[str] = []
+    provider_calls: list[tuple[str, str]] = []
+    credentials = {
+        "KEYFRAME_API_KEY": "patched-keyframe-key",
+        "ELEVENLABS_API_KEY": "patched-elevenlabs-key",
+        "ELEVENLABS_AGENT_ID": "patched-agent-id",
+    }
+
+    def provide_setting(_value: str | None, name: str) -> str:
+        requested_settings.append(name)
+        return credentials[name]
+
+    async def create_keyframe_session(
+        _client: Any,
+        api_key: str,
+        _settings: main.Settings | None = None,
+    ) -> main.KeyframeSessionDetails:
+        provider_calls.append(("keyframe", api_key))
+        return main.KeyframeSessionDetails(
+            server_url="wss://patched-keyframe.example/live",
+            participant_token="patched-participant-token",
+            agent_identity="patched-avatar-agent",
+        )
+
+    async def get_signed_url(
+        _client: Any,
+        api_key: str,
+        agent_id: str,
+        _settings: main.Settings | None = None,
+    ) -> main.ElevenLabsSignedUrlResponse:
+        provider_calls.append((agent_id, api_key))
+        return main.ElevenLabsSignedUrlResponse(
+            signed_url="wss://patched-elevenlabs.example/conversation",
+            conversation_id="patched-conversation-id",
+        )
+
+    monkeypatch.setattr(main, "require_setting", provide_setting)
+    monkeypatch.setattr(main, "create_keyframe_session", create_keyframe_session)
+    monkeypatch.setattr(main, "get_elevenlabs_signed_url", get_signed_url)
+
+    with TestClient(main.app) as client:
+        response = client.post("/api/session")
+
+    assert response.status_code == 200
+    assert requested_settings == ["KEYFRAME_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"]
+    assert provider_calls == [
+        ("keyframe", "patched-keyframe-key"),
+        ("patched-agent-id", "patched-elevenlabs-key"),
+    ]
+    assert response.json()["conversationId"] == "patched-conversation-id"
 
 
 def test_backend_startup_validates_packets_and_syncs_dynamic_agent_prompt(
@@ -440,39 +492,6 @@ def test_create_session_reports_missing_agent(monkeypatch: pytest.MonkeyPatch) -
 
     assert response.status_code == 400
     assert response.json() == {"error": "Missing ELEVENLABS_AGENT_ID. Add it to .env and restart pnpm dev."}
-
-
-def test_deliberate_agent_update_contains_dynamic_prompt_without_packet_bodies() -> None:
-    requests: list[dict[str, Any]] = []
-
-    class RecordingClient:
-        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-            requests.append({"method": method, "url": url, "kwargs": kwargs})
-            return StubResponse(body={})
-
-    settings = main.Settings(_env_file=None)
-    asyncio.run(
-        main.update_elevenlabs_agent(
-            RecordingClient(),
-            "eleven-key",
-            "agent_123",
-            settings,
-        )
-    )
-
-    assert requests == [
-        {
-            "method": "PATCH",
-            "url": "https://api.elevenlabs.io/v1/convai/agents/agent_123",
-            "kwargs": {
-                "headers": {
-                    "Content-Type": "application/json",
-                    "xi-api-key": "eleven-key",
-                },
-                "json": main.build_elevenlabs_agent_update_payload(),
-            },
-        }
-    ]
 
 
 def test_create_session_endpoint_reports_missing_required_settings() -> None:
