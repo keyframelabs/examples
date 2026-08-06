@@ -77,7 +77,6 @@ export function FloatingAvatarWindow({
     cameraError,
     cameraStatus,
     interviewTimeRemainingMs,
-    hasInterviewExpired,
     events,
     canvasSyncStatus,
     toggleCamera,
@@ -100,11 +99,9 @@ export function FloatingAvatarWindow({
     ? "Turning off Lyra"
     : isConnecting
       ? "Turning on Lyra"
-      : hasInterviewExpired
-        ? "Interview ended"
-        : isConnected
-          ? "Turn off Lyra"
-          : "Turn on Lyra";
+      : isConnected
+        ? "Turn off Lyra"
+        : "Turn on Lyra";
   const interviewTime = formatInterviewTime(interviewTimeRemainingMs);
 
   useEffect(() => {
@@ -317,7 +314,7 @@ export function FloatingAvatarWindow({
                         className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
                         aria-label={lyraToggleLabel}
                         aria-pressed={isConnected}
-                        disabled={isLyraChanging || hasInterviewExpired}
+                        disabled={isLyraChanging}
                         onClick={toggleLyra}
                       >
                         {isLyraChanging ? (
