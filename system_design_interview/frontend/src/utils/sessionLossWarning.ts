@@ -1,4 +1,4 @@
-export type SessionLossState = {
+type SessionLossState = {
   hasCanvasEdits: boolean;
   isSessionActive: boolean;
 };

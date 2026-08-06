@@ -5,42 +5,26 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from types import MappingProxyType
-from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import providers as provider_operations
+from . import session_service
 from .interviews.interview_loader import (
     DEFAULT_INTERVIEW_PROMPT_ID,
     InterviewPrompt,
     load_interview_prompts,
 )
-from .providers import (
-    INTERVIEW_PACKET_DYNAMIC_VARIABLE,
-    require_setting,
-    validate_provider_model,
-)
 from .schemas import (
     CreateSessionRequest,
-    ElevenLabsSignedUrlResponse,
     HealthResponse,
     InterviewCatalogItem,
     InterviewCatalogResponse,
-    KeyframeSessionDetails,
     LiveSessionResponse,
-    VoiceAgentDetails,
 )
-from .session_service import create_live_session
-from .settings import (
-    DEFAULT_CLIENT_ORIGINS,
-    DEFAULT_PROVIDER_TIMEOUT_SECONDS,
-    ENV_FILES,
-    ROOT_DIR,
-    Settings,
-)
+from .settings import ENV_FILES, Settings
 
 SERVICE_NAME = "kfl-system-design-interview"
 SKILL_LEVEL_ORDER = {"Intern": 0, "Junior": 1, "Senior": 2}
@@ -52,66 +36,6 @@ logger = logging.getLogger(__name__)
 def get_settings() -> Settings:
     # Keep ENV_FILES here so existing embedders can override app.main.ENV_FILES.
     return Settings(_env_file=ENV_FILES)
-
-
-def parse_provider_body(response: httpx.Response) -> Any:
-    return provider_operations.parse_provider_body(response)
-
-
-def extract_provider_error(body: Any, fallback: str) -> str:
-    return provider_operations.extract_provider_error(body, fallback)
-
-
-async def provider_json(
-    client: httpx.AsyncClient,
-    method: str,
-    url: str,
-    headers: dict[str, str],
-    payload: dict[str, Any] | None,
-    error_prefix: str,
-    params: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    return await provider_operations.provider_json(
-        client,
-        method,
-        url,
-        headers,
-        payload,
-        error_prefix,
-        params,
-        response_parser=parse_provider_body,
-        error_extractor=extract_provider_error,
-    )
-
-
-async def create_keyframe_session(
-    client: httpx.AsyncClient,
-    api_key: str,
-    settings: Settings | None = None,
-) -> KeyframeSessionDetails:
-    return await provider_operations.create_keyframe_session(
-        client,
-        api_key,
-        settings or get_settings(),
-        request_json=provider_json,
-        model_validator=validate_provider_model,
-    )
-
-
-async def get_elevenlabs_signed_url(
-    client: httpx.AsyncClient,
-    api_key: str,
-    agent_id: str,
-    settings: Settings | None = None,
-) -> ElevenLabsSignedUrlResponse:
-    return await provider_operations.get_elevenlabs_signed_url(
-        client,
-        api_key,
-        agent_id,
-        settings or get_settings(),
-        request_json=provider_json,
-        model_validator=validate_provider_model,
-    )
 
 
 @asynccontextmanager
@@ -186,14 +110,7 @@ async def create_session(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown interview packet: {packet_id}") from exc
 
-    return await create_live_session(
-        get_provider_http_client(http_request),
-        settings,
-        prompt,
-        setting_validator=require_setting,
-        keyframe_session_creator=create_keyframe_session,
-        signed_url_provider=get_elevenlabs_signed_url,
-    )
+    return await session_service.create_live_session(get_provider_http_client(http_request), settings, prompt)
 
 
 def get_provider_http_client(request: Request) -> httpx.AsyncClient:

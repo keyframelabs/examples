@@ -19,7 +19,7 @@ const alertVariants = cva(
   }
 );
 
-export interface AlertProps
+interface AlertProps
   extends HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof alertVariants> {}
 
@@ -34,14 +34,6 @@ export const Alert = forwardRef<HTMLDivElement, AlertProps>(
   )
 );
 Alert.displayName = "Alert";
-
-export const AlertTitle = forwardRef<
-  HTMLParagraphElement,
-  HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h5 ref={ref} className={cn("mb-1 font-medium leading-none", className)} {...props} />
-));
-AlertTitle.displayName = "AlertTitle";
 
 export const AlertDescription = forwardRef<
   HTMLParagraphElement,

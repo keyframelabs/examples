@@ -35,7 +35,7 @@ export type InterviewStartup = {
   liveSessionRequest: Promise<LiveSessionResponse>;
 };
 
-export type CameraStatus =
+type CameraStatus =
   | "idle"
   | "requesting"
   | "ready"
@@ -69,7 +69,6 @@ export function useInterviewMediaSession({
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isEndingCall, setIsEndingCall] = useState(false);
-  const [hasEndedCall, setHasEndedCall] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
@@ -156,7 +155,6 @@ export function useInterviewMediaSession({
     if (hasInterviewExpiredRef.current) return;
 
     setAvatarError(null);
-    setHasEndedCall(false);
     setEvents([]);
     setIsConnecting(true);
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
@@ -336,7 +334,6 @@ export function useInterviewMediaSession({
 
   async function disconnectLyra() {
     setAvatarError(null);
-    setHasEndedCall(true);
     setIsEndingCall(true);
 
     try {
@@ -445,7 +442,6 @@ export function useInterviewMediaSession({
     isConnecting,
     isConnected,
     isEndingCall,
-    hasEndedCall,
     avatarError,
     cameraError,
     cameraStatus,
@@ -453,7 +449,6 @@ export function useInterviewMediaSession({
     hasInterviewExpired: hasInterviewExpiredRef.current,
     events,
     canvasSyncStatus,
-    joinInterview,
     toggleCamera,
     toggleLyra
   };

@@ -27,7 +27,7 @@ export const INITIAL_CANVAS_SYNC_STATUS: CanvasSyncStatus = {
   error: null
 };
 
-export type CanvasContextSyncOptions = {
+type CanvasContextSyncOptions = {
   sendContextUpdate: (text: string) => void | Promise<void>;
   hashIntervalMs?: number;
   sendIntervalMs?: number;

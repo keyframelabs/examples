@@ -3,7 +3,6 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource/instrument-serif";
-@import "./components/canvas/canvas.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -42,7 +41,7 @@
   --sidebar-ring: oklch(0.2166 0.0057 106.8685);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Instrument Serif', Georgia, serif;
-  --font-mono: IBM Plex Mono, ui-monospace, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --radius: 0.025rem;
   --shadow-x: 2.5px;
   --shadow-y: 2.5px;

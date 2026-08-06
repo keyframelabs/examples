@@ -1,165 +1,96 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
-import { CanvasSyncIndicator } from "@/components/avatar/CanvasSyncIndicator";
-import {
-  FloatingAvatarWindow,
-  type InterviewStartup
-} from "@/components/avatar/FloatingAvatarWindow";
-import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
-import type { CanvasRightOcclusion } from "@/components/canvas/fitView";
-import { createCanvasSessionDefaults } from "@/components/canvas/model/interviewCanvasTemplates";
-import type { CanvasState } from "@/components/canvas/model/types";
+import type { InterviewStartup } from "@/components/avatar/useInterviewMediaSession";
 import { InterviewPacketLanding } from "@/components/interview/InterviewPacketLanding";
-import {
-  createLiveSession,
-  type InterviewPacket
-} from "@/lib/api";
-import {
-  INITIAL_CANVAS_SYNC_STATUS,
-  type CanvasSyncStatus
-} from "@/utils/avatar/canvasContextSync";
-import {
-  registerSessionLossWarning,
-  shouldWarnAboutSessionLoss
-} from "@/utils/sessionLossWarning";
+import { createLiveSession, type InterviewPacket } from "@/lib/api";
 import { requestUserCamera } from "@/utils/interview/userCamera";
 
-const INITIAL_CANVAS_SESSION = createCanvasSessionDefaults();
+let interviewSessionModulePromise: Promise<
+  typeof import("@/components/interview/InterviewSession")
+> | null = null;
 
-type InterviewStage = "selection" | "introduction" | "canvas";
+function loadInterviewSession() {
+  interviewSessionModulePromise ??= import(
+    "@/components/interview/InterviewSession"
+  ).catch((error) => {
+    interviewSessionModulePromise = null;
+    throw error;
+  });
+  return interviewSessionModulePromise;
+}
 
-// Keep the side-by-side introduction implemented but dormant until KEY-97 can
-// use the js/elements tool-call support tracked by KEY-23.
-const INTERVIEW_ENTRY_STAGE: Exclude<InterviewStage, "selection"> = "canvas";
+const InterviewSession = lazy(loadInterviewSession);
+
+type ActiveInterview = {
+  packet: InterviewPacket;
+  startup: InterviewStartup;
+};
 
 export function App() {
-  const [interviewStage, setInterviewStage] =
-    useState<InterviewStage>("selection");
-  const [selectedPacket, setSelectedPacket] = useState<InterviewPacket | null>(
-    null
-  );
-  const [interviewStartup, setInterviewStartup] =
-    useState<InterviewStartup | null>(null);
-  const [canvasSessionId, setCanvasSessionId] = useState(0);
-  const [canvasInitialState, setCanvasInitialState] = useState<CanvasState>(
-    INITIAL_CANVAS_SESSION.initialState
-  );
-  const [canvasText, setCanvasText] = useState(
-    INITIAL_CANVAS_SESSION.canvasText
-  );
-  const [hasCanvasEdits, setHasCanvasEdits] = useState(false);
-  const [canvasSyncStatus, setCanvasSyncStatus] =
-    useState<CanvasSyncStatus>(INITIAL_CANVAS_SYNC_STATUS);
-  const [canvasRightOcclusion, setCanvasRightOcclusion] =
-    useState<CanvasRightOcclusion | null>(null);
-  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
-  const currentCanvasSessionIdRef = useRef(canvasSessionId);
-  currentCanvasSessionIdRef.current = canvasSessionId;
-  const shouldWarnBeforeUnload = shouldWarnAboutSessionLoss({
-    hasCanvasEdits,
-    isSessionActive: canvasSyncStatus.isReady
-  });
+  const [activeInterview, setActiveInterview] =
+    useState<ActiveInterview | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  const handleCanvasTextChange = useCallback(
-    (text: string) => {
-      if (canvasSessionId !== currentCanvasSessionIdRef.current) return;
-      setCanvasText(text);
-    },
-    [canvasSessionId]
-  );
+  async function startInterview(packet: InterviewPacket) {
+    if (isStarting) return;
+    setIsStarting(true);
+    setStartError(null);
 
-  const handleReturnToSelection = useCallback(() => {
-    const emptyCanvasSession = createCanvasSessionDefaults();
-    setInterviewStage("selection");
-    setSelectedPacket(null);
-    setInterviewStartup(null);
-    setCanvasSessionId((current) => current + 1);
-    setCanvasInitialState(emptyCanvasSession.initialState);
-    setCanvasText(emptyCanvasSession.canvasText);
-    setHasCanvasEdits(false);
-    setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
-    setCanvasRightOcclusion(null);
-  }, []);
-
-  const handleStartInterview = useCallback((packet: InterviewPacket) => {
-    const nextCanvasSession = createCanvasSessionDefaults();
-    const cameraRequest = requestUserCamera();
-    const liveSessionRequest = createLiveSession(packet.packetId);
-    void cameraRequest.catch(() => undefined);
-    void liveSessionRequest.catch(() => undefined);
+    try {
+      await loadInterviewSession();
+    } catch {
+      setIsStarting(false);
+      setStartError(
+        "Could not load the interview workspace. Check your connection and try again."
+      );
+      return;
+    }
 
     const startup = {
-      cameraRequest,
-      liveSessionRequest
+      cameraRequest: requestUserCamera(),
+      liveSessionRequest: createLiveSession(packet.packetId)
     };
-
-    setSelectedPacket(packet);
-    setInterviewStartup(startup);
-    setCanvasSessionId((current) => current + 1);
-    setCanvasInitialState(nextCanvasSession.initialState);
-    setCanvasText(nextCanvasSession.canvasText);
-    setHasCanvasEdits(false);
-    setCanvasRightOcclusion(null);
-    setInterviewStage(INTERVIEW_ENTRY_STAGE);
-  }, []);
-
-  useEffect(() => {
-    if (!shouldWarnBeforeUnload) return;
-    return registerSessionLossWarning(window);
-  }, [shouldWarnBeforeUnload]);
-
-  useEffect(() => {
-    canvasContainerRef.current?.toggleAttribute(
-      "inert",
-      interviewStage !== "canvas"
-    );
-  }, [interviewStage]);
+    void startup.cameraRequest.catch(() => undefined);
+    void startup.liveSessionRequest.catch(() => undefined);
+    setActiveInterview({ packet, startup });
+    setIsStarting(false);
+  }
 
   return (
     <main className="relative h-screen min-h-screen overflow-hidden bg-canvas-paper text-canvas-ink">
-      <div
-        ref={canvasContainerRef}
-        className={
-          interviewStage === "canvas"
-            ? "absolute inset-0 opacity-100"
-            : "pointer-events-none absolute inset-0 opacity-0"
-        }
-        aria-hidden={interviewStage !== "canvas"}
-      >
-        <SystemDesignCanvas
-          key={canvasSessionId}
-          className="h-full"
-          initialState={canvasInitialState}
-          isInteractive={interviewStage === "canvas"}
-          rightOcclusion={canvasRightOcclusion}
-          onCanvasDirtyChange={setHasCanvasEdits}
-          onCanvasTextChange={handleCanvasTextChange}
-          toolbarEnd={
-            canvasSyncStatus.isReady ? (
-              <CanvasSyncIndicator status={canvasSyncStatus} />
-            ) : null
-          }
-        />
-      </div>
-
-      {interviewStage === "selection" ? (
-        <InterviewPacketLanding
-          onStartInterview={handleStartInterview}
-        />
-      ) : null}
-
-      {interviewStage !== "selection" && selectedPacket && interviewStartup ? (
-        <FloatingAvatarWindow
-          canvasText={canvasText}
-          packet={selectedPacket}
-          startup={interviewStartup}
-          stage={interviewStage}
-          onEnterCanvas={() => setInterviewStage("canvas")}
-          onReturnToSelection={handleReturnToSelection}
-          onCanvasSyncStatusChange={setCanvasSyncStatus}
-          onCanvasRightOcclusionChange={setCanvasRightOcclusion}
-        />
+      {activeInterview ? (
+        <Suspense fallback={<InterviewSessionLoading />}>
+          <InterviewSession
+            packet={activeInterview.packet}
+            startup={activeInterview.startup}
+            onExit={() => setActiveInterview(null)}
+          />
+        </Suspense>
+      ) : isStarting ? (
+        <InterviewSessionLoading />
+      ) : (
+        <InterviewPacketLanding onStartInterview={startInterview} />
+      )}
+      {startError ? (
+        <p
+          className="fixed bottom-4 left-1/2 z-50 w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 rounded-md border border-destructive/40 bg-card px-4 py-3 text-center text-sm text-destructive shadow-lg"
+          role="alert"
+        >
+          {startError}
+        </p>
       ) : null}
     </main>
+  );
+}
+
+function InterviewSessionLoading() {
+  return (
+    <div
+      className="grid h-full place-items-center text-sm text-muted-foreground"
+      role="status"
+    >
+      Starting interview…
+    </div>
   );
 }

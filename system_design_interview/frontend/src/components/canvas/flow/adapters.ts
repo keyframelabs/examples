@@ -22,7 +22,7 @@ import {
 const NODE_HANDLE_PREFIX = "anchor:";
 const FIELD_HANDLE_PREFIX = "field:";
 
-export interface FlowEndpoint {
+interface FlowEndpoint {
   nodeId: string;
   fieldId?: string;
   anchor?: CanvasNodeAnchor;
@@ -60,7 +60,7 @@ export type SystemNodeData = {
 
 export type SystemFlowNode = Node<SystemNodeData, "system">;
 
-export type SystemEdgeData = {
+type SystemEdgeData = {
   connection: CanvasConnection;
   isTableRelationship: boolean;
   onEditStart: () => void;
@@ -122,7 +122,7 @@ export function canvasStateToFlowElements(
   return { nodes, edges };
 }
 
-export function canvasNodeToFlowNode(
+function canvasNodeToFlowNode(
   node: CanvasNode,
   selected: boolean,
   options: FlowAdapterOptions
@@ -160,7 +160,7 @@ export function canvasNodeToFlowNode(
   };
 }
 
-export function canvasConnectionToFlowEdge(
+function canvasConnectionToFlowEdge(
   state: CanvasState,
   connection: CanvasConnection,
   selected: boolean,
@@ -337,7 +337,7 @@ function defaultAnchor(end: "source" | "target"): CanvasNodeAnchor {
 
 function nearestAnchor(node: CanvasNode, toward: { x: number; y: number }) {
   const anchors = node.kind === "table" ? TABLE_NODE_ANCHORS : NODE_ANCHORS;
-  let nearest = anchors[0];
+  let nearest: CanvasNodeAnchor = anchors[0];
   let nearestDistance = Number.POSITIVE_INFINITY;
 
   for (const anchor of anchors) {
@@ -394,19 +394,10 @@ export function facingFieldSide(
 }
 
 function isCanvasNodeAnchor(value: string): value is CanvasNodeAnchor {
-  return (
-    value === "top-left" ||
-    value === "top" ||
-    value === "top-right" ||
-    value === "right" ||
-    value === "bottom-right" ||
-    value === "bottom" ||
-    value === "bottom-left" ||
-    value === "left"
-  );
+  return NODE_ANCHORS.includes(value as CanvasNodeAnchor);
 }
 
-const NODE_ANCHORS: CanvasNodeAnchor[] = [
+export const NODE_ANCHORS = [
   "top-left",
   "top",
   "top-right",
@@ -415,13 +406,13 @@ const NODE_ANCHORS: CanvasNodeAnchor[] = [
   "bottom",
   "bottom-left",
   "left"
-];
+] as const satisfies readonly CanvasNodeAnchor[];
 
-const TABLE_NODE_ANCHORS: CanvasNodeAnchor[] = [
+export const TABLE_NODE_ANCHORS = [
   "top-left",
   "top",
   "top-right",
   "bottom-right",
   "bottom",
   "bottom-left"
-];
+] as const satisfies readonly CanvasNodeAnchor[];

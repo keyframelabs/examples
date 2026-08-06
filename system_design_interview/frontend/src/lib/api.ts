@@ -6,9 +6,9 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8788";
 const INTERVIEW_CATALOG_RETRY_DELAYS_MS = [250, 500, 1000, 2000] as const;
 
-export type KeyframeSessionDetails = SessionDetails;
+type KeyframeSessionDetails = SessionDetails;
 
-export type VoiceAgentDetails = PersonaVoiceAgentDetails & {
+type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   type: "elevenlabs";
   agent_id: string;
   signed_url: string;
@@ -161,8 +161,4 @@ function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }

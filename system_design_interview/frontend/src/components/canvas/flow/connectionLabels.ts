@@ -25,12 +25,12 @@ const EDGE_LABEL_HORIZONTAL_PADDING = 22;
 const HANDLE_PATH_OFFSET = 5;
 const LARGE_EDGE_LABEL_WIDTH_SCALE = 1.42;
 
-export const CONNECTION_LABEL_HEIGHT = 26;
-export const LARGE_CONNECTION_LABEL_HEIGHT = 36;
+const CONNECTION_LABEL_HEIGHT = 26;
+const LARGE_CONNECTION_LABEL_HEIGHT = 36;
 export const CONNECTION_LABEL_COLLISION_GAP = 8;
-export const CONNECTION_ROUTING_OFFSET = 32;
+const CONNECTION_ROUTING_OFFSET = 32;
 
-export interface ConnectionLabelRect {
+interface ConnectionLabelRect {
   id: string;
   x: number;
   y: number;
@@ -44,7 +44,7 @@ interface EndpointGeometry {
   position: Position;
 }
 
-export function connectionLabelWidth(label: string): number {
+function connectionLabelWidth(label: string): number {
   const estimatedWidth =
     Math.max(label.length, "Flow label".length) *
       EDGE_LABEL_CHARACTER_WIDTH +

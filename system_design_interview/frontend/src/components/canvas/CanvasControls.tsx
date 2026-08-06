@@ -27,7 +27,6 @@ import {
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip";
 
@@ -83,7 +82,7 @@ export function CanvasToolbar({
   toolbarEnd?: ReactNode;
 }) {
   return (
-    <TooltipProvider delayDuration={250}>
+    <>
       <Card className="absolute left-4 top-4 z-20 flex items-center gap-2 bg-card/95 p-1 backdrop-blur-sm">
         <ToggleGroup
           type="single"
@@ -166,7 +165,7 @@ export function CanvasToolbar({
           </ToggleGroup>
         </Card>
       ) : null}
-    </TooltipProvider>
+    </>
   );
 }
 

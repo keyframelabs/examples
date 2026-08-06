@@ -35,8 +35,7 @@ import {
 import {
   geometryChanges,
   isSameFlowEndpoint,
-  isTableRelationship,
-  scheduleCanvasTextSerialization
+  isTableRelationship
 } from "@/components/canvas/canvasFlowHelpers";
 import {
   canvasStateToFlowElements,
@@ -74,29 +73,23 @@ import {
   type CanvasTextMetadata,
   type CanvasTool
 } from "@/components/canvas/model/types";
-import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
-import { cn } from "@/lib/utils";
+import {
+  scheduleCanvasTextSerialization,
+  serializeCanvasToText
+} from "@/components/canvas/serializer/serializeCanvas";
 
-export interface SystemDesignCanvasProps {
-  initialState?: CanvasState;
-  className?: string;
-  isInteractive?: boolean;
-  onCanvasChange?: (state: CanvasState) => void;
+type SystemDesignCanvasProps = {
   onCanvasDirtyChange?: (isDirty: boolean) => void;
   onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
   rightOcclusion?: CanvasRightOcclusion | null;
   toolbarEnd?: ReactNode;
-}
+};
 
 const NODE_TYPES = { system: SystemDesignNode };
 const EDGE_TYPES = { system: SystemDesignEdge };
 const DEFAULT_VIEWPORT = { x: 150, y: 110, zoom: 1 };
 
 export function SystemDesignCanvas({
-  initialState,
-  className = "",
-  isInteractive = true,
-  onCanvasChange,
   onCanvasDirtyChange,
   onCanvasTextChange,
   rightOcclusion = null,
@@ -113,7 +106,7 @@ export function SystemDesignCanvas({
     canUndo,
     canRedo,
     isDirty
-  } = useCanvasHistory(initialState);
+  } = useCanvasHistory();
   const [tool, setTool] = useState<CanvasTool>("select");
   const [connectionCardinality, setConnectionCardinality] =
     useState<CanvasConnectionCardinality>("one-to-one");
@@ -122,7 +115,6 @@ export function SystemDesignCanvas({
     useState<CardinalityMenuState | null>(null);
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
-  const rootRef = useRef<HTMLElement | null>(null);
   const flowInstanceRef =
     useRef<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
   const interactionSnapshotRef = useRef<CanvasState | null>(null);
@@ -154,10 +146,6 @@ export function SystemDesignCanvas({
       callback(serialized.text, serialized.metadata);
     });
   }, []);
-
-  useEffect(() => {
-    onCanvasChange?.(state);
-  }, [onCanvasChange, state]);
 
   useEffect(() => {
     onCanvasDirtyChange?.(isDirty);
@@ -523,8 +511,6 @@ export function SystemDesignCanvas({
   );
 
   useEffect(() => {
-    if (!isInteractive) return;
-
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
@@ -560,7 +546,7 @@ export function SystemDesignCanvas({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [apply, isInteractive, redo, undo]);
+  }, [apply, redo, undo]);
 
   const flowElements = useMemo(
     () =>
@@ -624,13 +610,7 @@ export function SystemDesignCanvas({
   }, [fitViewOptions, rightOcclusion]);
 
   return (
-    <section
-      ref={rootRef}
-      className={cn(
-        "system-design-flow relative h-full min-h-[560px] select-none overflow-hidden bg-canvas-paper text-canvas-ink",
-        className
-      )}
-    >
+    <section className="system-design-flow relative h-full min-h-[560px] select-none overflow-hidden bg-canvas-paper text-canvas-ink">
       <CanvasToolbar
         tool={tool}
         canUndo={canUndo}
@@ -679,8 +659,7 @@ export function SystemDesignCanvas({
         zoomActivationKeyCode={["Meta", "Control"]}
         zoomOnDoubleClick={false}
         connectOnClick
-        deleteKeyCode={isInteractive ? ["Backspace", "Delete"] : null}
-        disableKeyboardA11y={!isInteractive}
+        deleteKeyCode={["Backspace", "Delete"]}
         multiSelectionKeyCode={["Meta", "Control"]}
         selectionKeyCode="Shift"
         attributionPosition="bottom-right"

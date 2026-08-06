@@ -6,8 +6,6 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 
-type InterviewStage = "introduction" | "canvas";
-
 type Position = {
   x: number;
   y: number;
@@ -51,12 +49,10 @@ const CANVAS_TOP_CONTROLS_BOTTOM =
 const CANVAS_TOP_CONTROLS_CLEARANCE =
   CANVAS_TOP_CONTROLS_BOTTOM + VIEWPORT_MARGIN;
 
-export function useFloatingPanel(stage: InterviewStage) {
+export function useFloatingPanel() {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
-  const removeDragListenersRef = useRef<() => void>(() => undefined);
-  const removeResizeListenersRef = useRef<() => void>(() => undefined);
   const [panelSize, setPanelSize] = useState<PanelSize>(initialPanelSize);
   const [position, setPosition] = useState<Position>(() =>
     initialPosition(panelSize.width, panelSize.height)
@@ -64,14 +60,8 @@ export function useFloatingPanel(stage: InterviewStage) {
   const [minimized, setMinimized] = useState(false);
 
   useEffect(() => {
-    if (stage === "introduction") setMinimized(false);
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage !== "canvas") return;
-
     reconcilePanelLayout();
-  }, [minimized, stage]);
+  }, [minimized]);
 
   useEffect(() => {
     function handleResize() {
@@ -82,18 +72,10 @@ export function useFloatingPanel(stage: InterviewStage) {
     return () => window.removeEventListener("resize", handleResize);
   }, [minimized, panelSize]);
 
-  useEffect(
-    () => () => {
-      removeDragListenersRef.current();
-      removeResizeListenersRef.current();
-    },
-    []
-  );
-
   function handleHeaderPointerDown(
     event: ReactPointerEvent<HTMLDivElement>
   ) {
-    if (stage !== "canvas" || event.button !== 0) return;
+    if (event.button !== 0) return;
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -102,10 +84,6 @@ export function useFloatingPanel(stage: InterviewStage) {
       startClient: { x: event.clientX, y: event.clientY },
       startPosition: position
     };
-    window.addEventListener("pointermove", handleWindowPointerMove);
-    window.addEventListener("pointerup", handleWindowPointerEnd);
-    window.addEventListener("pointercancel", handleWindowPointerEnd);
-    removeDragListenersRef.current = removeDragListeners;
   }
 
   function handleHeaderPointerMove(
@@ -119,14 +97,6 @@ export function useFloatingPanel(stage: InterviewStage) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-  }
-
-  function handleWindowPointerMove(event: PointerEvent) {
-    updateDragPosition(event.pointerId, event.clientX, event.clientY);
-  }
-
-  function handleWindowPointerEnd(event: PointerEvent) {
-    endDrag(event.pointerId);
   }
 
   function updateDragPosition(
@@ -149,20 +119,12 @@ export function useFloatingPanel(stage: InterviewStage) {
 
   function endDrag(pointerId: number) {
     if (dragRef.current?.pointerId === pointerId) dragRef.current = null;
-    removeDragListeners();
-  }
-
-  function removeDragListeners() {
-    window.removeEventListener("pointermove", handleWindowPointerMove);
-    window.removeEventListener("pointerup", handleWindowPointerEnd);
-    window.removeEventListener("pointercancel", handleWindowPointerEnd);
-    removeDragListenersRef.current = () => undefined;
   }
 
   function handleResizePointerDown(
     event: ReactPointerEvent<HTMLButtonElement>
   ) {
-    if (stage !== "canvas" || minimized || event.button !== 0) return;
+    if (minimized || event.button !== 0) return;
 
     const panel = panelRef.current;
     if (!panel) return;
@@ -178,10 +140,6 @@ export function useFloatingPanel(stage: InterviewStage) {
       startSize: { width: rect.width, height: rect.height },
       aspectRatio: rect.width / rect.height
     };
-    window.addEventListener("pointermove", handleWindowResizePointerMove);
-    window.addEventListener("pointerup", handleWindowResizePointerEnd);
-    window.addEventListener("pointercancel", handleWindowResizePointerEnd);
-    removeResizeListenersRef.current = removeResizeListeners;
   }
 
   function handleResizePointerMove(
@@ -195,14 +153,6 @@ export function useFloatingPanel(stage: InterviewStage) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-  }
-
-  function handleWindowResizePointerMove(event: PointerEvent) {
-    updatePanelSize(event.pointerId, event.clientX, event.clientY);
-  }
-
-  function handleWindowResizePointerEnd(event: PointerEvent) {
-    endResize(event.pointerId);
   }
 
   function updatePanelSize(
@@ -307,14 +257,6 @@ export function useFloatingPanel(stage: InterviewStage) {
 
   function endResize(pointerId: number) {
     if (resizeRef.current?.pointerId === pointerId) resizeRef.current = null;
-    removeResizeListeners();
-  }
-
-  function removeResizeListeners() {
-    window.removeEventListener("pointermove", handleWindowResizePointerMove);
-    window.removeEventListener("pointerup", handleWindowResizePointerEnd);
-    window.removeEventListener("pointercancel", handleWindowResizePointerEnd);
-    removeResizeListenersRef.current = () => undefined;
   }
 
   function getPanelSize(): PanelSize {

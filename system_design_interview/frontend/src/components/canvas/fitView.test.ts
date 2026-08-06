@@ -237,10 +237,10 @@ describe("canvas fit view", () => {
   it("cleans up its viewport resize subscription", () => {
     let resizeListener: (() => void) | undefined;
     const target = {
-      addEventListener: vi.fn((type: "resize", listener: () => void) => {
+      addEventListener: vi.fn((_type: "resize", listener: () => void) => {
         resizeListener = listener;
       }),
-      removeEventListener: vi.fn((type: "resize", listener: () => void) => {
+      removeEventListener: vi.fn((_type: "resize", listener: () => void) => {
         if (resizeListener === listener) resizeListener = undefined;
       })
     };

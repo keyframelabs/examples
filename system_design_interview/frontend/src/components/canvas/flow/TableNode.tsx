@@ -3,9 +3,7 @@ import type { PointerEvent } from "react";
 import type { SystemNodeData } from "@/components/canvas/flow/adapters";
 import { InlineInput } from "@/components/canvas/flow/NodeTextControls";
 import { NODE_COLORS } from "@/components/canvas/flow/nodeStyles";
-import {
-  TABLE_FIELD_HEIGHT
-} from "@/components/canvas/model/state";
+import { TABLE_FIELD_HEIGHT } from "@/components/canvas/model/tableLayout";
 import type {
   CanvasField,
   CanvasTableNode

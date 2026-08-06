@@ -1,43 +1,26 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
-from typing import Any, Protocol, TypeVar
+from typing import Any, TypeVar
 
 import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
 
 from .schemas import ElevenLabsSignedUrlResponse, KeyframeSessionDetails
-from .settings import Settings, load_settings
+from .settings import Settings
 
 INTERVIEW_PACKET_DYNAMIC_VARIABLE = "interview_packet"
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
-ProviderJson = Callable[..., Awaitable[dict[str, Any]]]
-ProviderResponseParser = Callable[[httpx.Response], Any]
-ProviderErrorExtractor = Callable[[Any, str], str]
-
-
-class ModelValidator(Protocol):
-    def __call__(
-        self,
-        model_type: type[ModelT],
-        body: dict[str, Any],
-        error_prefix: str,
-    ) -> ModelT: ...
 
 
 async def create_keyframe_session(
     client: httpx.AsyncClient,
     api_key: str,
-    settings: Settings | None = None,
-    *,
-    request_json: ProviderJson,
-    model_validator: ModelValidator,
+    settings: Settings,
 ) -> KeyframeSessionDetails:
-    settings = settings or load_settings()
-    body = await request_json(
+    body = await provider_json(
         client,
         "POST",
         "https://api.keyframelabs.com/v1/sessions",
@@ -49,20 +32,16 @@ async def create_keyframe_session(
         "Keyframe session creation failed",
     )
 
-    return model_validator(KeyframeSessionDetails, body, "Keyframe session creation failed")
+    return validate_provider_model(KeyframeSessionDetails, body, "Keyframe session creation failed")
 
 
 async def get_elevenlabs_signed_url(
     client: httpx.AsyncClient,
     api_key: str,
     agent_id: str,
-    settings: Settings | None = None,
-    *,
-    request_json: ProviderJson,
-    model_validator: ModelValidator,
+    settings: Settings,
 ) -> ElevenLabsSignedUrlResponse:
-    settings = settings or load_settings()
-    body = await request_json(
+    body = await provider_json(
         client,
         "GET",
         f"{settings.elevenlabs_api_base_url}/v1/convai/conversation/get-signed-url",
@@ -75,7 +54,7 @@ async def get_elevenlabs_signed_url(
         },
     )
 
-    return model_validator(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
+    return validate_provider_model(ElevenLabsSignedUrlResponse, body, "ElevenLabs signed URL request failed")
 
 
 async def provider_json(
@@ -86,9 +65,6 @@ async def provider_json(
     payload: dict[str, Any] | None,
     error_prefix: str,
     params: dict[str, str] | None = None,
-    *,
-    response_parser: ProviderResponseParser,
-    error_extractor: ProviderErrorExtractor,
 ) -> dict[str, Any]:
     request_kwargs: dict[str, Any] = {"headers": headers}
     if params is not None:
@@ -103,9 +79,9 @@ async def provider_json(
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"{error_prefix}: {exc}") from exc
 
-    body = response_parser(response)
+    body = parse_provider_body(response)
     if not 200 <= response.status_code < 300:
-        detail = error_extractor(body, response.reason_phrase or "provider error")
+        detail = extract_provider_error(body, response.reason_phrase or "provider error")
         raise HTTPException(status_code=response.status_code, detail=f"{error_prefix}: {detail}")
 
     if body is None:
