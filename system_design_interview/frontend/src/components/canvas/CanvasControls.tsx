@@ -111,7 +111,7 @@ export function CanvasToolbar({
             );
           })}
         </ToggleGroup>
-        <Separator orientation="vertical" className="mx-1 h-7" />
+        <Separator className="mx-1 h-7" />
         <ToolbarButton
           label="Undo"
           disabled={!canUndo}
@@ -126,7 +126,7 @@ export function CanvasToolbar({
         />
         {toolbarEnd ? (
           <>
-            <Separator orientation="vertical" className="mx-1 h-7" />
+            <Separator className="mx-1 h-7" />
             {toolbarEnd}
           </>
         ) : null}

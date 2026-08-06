@@ -80,7 +80,7 @@ export function FloatingAvatarWindow({
     events,
     canvasSyncStatus,
     toggleCamera,
-    toggleLyra
+    toggleAvatar
   } = useInterviewMediaSession({
     canvasText,
     packet,
@@ -94,14 +94,14 @@ export function FloatingAvatarWindow({
     : isCameraOn
       ? "Turn off camera"
       : "Turn on camera";
-  const isLyraChanging = isConnecting || isEndingCall;
-  const lyraToggleLabel = isEndingCall
-    ? "Turning off Lyra"
+  const isAvatarChanging = isConnecting || isEndingCall;
+  const avatarToggleLabel = isEndingCall
+    ? "Turning off avatar"
     : isConnecting
-      ? "Turning on Lyra"
+      ? "Turning on avatar"
       : isConnected
-        ? "Turn off Lyra"
-        : "Turn on Lyra";
+        ? "Turn off avatar"
+        : "Turn on avatar";
   const interviewTime = formatInterviewTime(interviewTimeRemainingMs);
 
   useEffect(() => {
@@ -294,7 +294,7 @@ export function FloatingAvatarWindow({
 
               <section
                 className="order-1 aspect-square h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl border bg-muted/40"
-                aria-label="Lyra video"
+                aria-label="Avatar video"
               >
                 <div className="relative h-full w-full overflow-hidden bg-canvas-avatar-surface">
                   <div
@@ -312,12 +312,12 @@ export function FloatingAvatarWindow({
                         variant="secondary"
                         size="icon-sm"
                         className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
-                        aria-label={lyraToggleLabel}
+                        aria-label={avatarToggleLabel}
                         aria-pressed={isConnected}
-                        disabled={isLyraChanging}
-                        onClick={toggleLyra}
+                        disabled={isAvatarChanging}
+                        onClick={toggleAvatar}
                       >
-                        {isLyraChanging ? (
+                        {isAvatarChanging ? (
                           <Loader2 className="size-4 animate-spin" />
                         ) : isConnected ? (
                           <PhoneOff className="size-4" />
@@ -327,11 +327,11 @@ export function FloatingAvatarWindow({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="left">
-                      {lyraToggleLabel}
+                      {avatarToggleLabel}
                     </TooltipContent>
                   </Tooltip>
                   <div className="absolute bottom-2 left-8 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm">
-                    Lyra
+                    Avatar
                   </div>
                 </div>
               </section>

@@ -1,4 +1,3 @@
-import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 
@@ -10,14 +9,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90",
         outline:
           "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
         secondary:
           "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline"
+        ghost: "hover:bg-accent hover:text-accent-foreground"
       },
       size: {
         default: "h-9 px-3",
@@ -36,13 +32,7 @@ const buttonVariants = cva(
 
 interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-  active?: boolean;
-}
-
-const activeButtonClass =
-  "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90";
+    VariantProps<typeof buttonVariants> {}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -50,25 +40,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className,
       variant,
       size,
-      active = false,
-      asChild = false,
       type = "button",
       ...props
     },
     ref
   ) => {
-    const Comp = asChild ? Slot : "button";
-
     return (
-      <Comp
+      <button
         ref={ref}
-        type={asChild ? undefined : type}
-        data-active={active ? "true" : undefined}
-        className={cn(
-          buttonVariants({ variant, size }),
-          active && activeButtonClass,
-          className
-        )}
+        type={type}
+        className={cn(buttonVariants({ variant, size }), className)}
         {...props}
       />
     );

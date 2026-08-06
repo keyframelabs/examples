@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -11,11 +12,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import session_service
 from .interviews.interview_loader import (
     DEFAULT_INTERVIEW_PROMPT_ID,
     InterviewPrompt,
     load_interview_prompts,
+)
+from .providers import (
+    INTERVIEW_PACKET_DYNAMIC_VARIABLE,
+    create_keyframe_session,
+    get_elevenlabs_signed_url,
+    require_setting,
 )
 from .schemas import (
     CreateSessionRequest,
@@ -23,6 +29,7 @@ from .schemas import (
     InterviewCatalogItem,
     InterviewCatalogResponse,
     LiveSessionResponse,
+    VoiceAgentDetails,
 )
 from .settings import ENV_FILES, Settings
 
@@ -85,9 +92,9 @@ async def list_interviews(request: Request) -> InterviewCatalogResponse:
     ordered_prompts = sorted(
         prompts.values(),
         key=lambda prompt: (
-            SKILL_LEVEL_ORDER[prompt.skill_level],
-            prompt.display_name.casefold(),
-            prompt.display_name,
+            SKILL_LEVEL_ORDER[prompt.metadata.skill_level],
+            prompt.metadata.display_name.casefold(),
+            prompt.metadata.display_name,
             prompt.prompt_id,
         ),
     )
@@ -110,7 +117,24 @@ async def create_session(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown interview packet: {packet_id}") from exc
 
-    return await session_service.create_live_session(get_provider_http_client(http_request), settings, prompt)
+    keyframe_api_key = require_setting(settings.keyframe_api_key, "KEYFRAME_API_KEY")
+    elevenlabs_api_key = require_setting(settings.elevenlabs_api_key, "ELEVENLABS_API_KEY")
+    elevenlabs_agent_id = require_setting(settings.elevenlabs_agent_id, "ELEVENLABS_AGENT_ID")
+    client = get_provider_http_client(http_request)
+
+    session_details, signed_url = await asyncio.gather(
+        create_keyframe_session(client, keyframe_api_key, settings),
+        get_elevenlabs_signed_url(client, elevenlabs_api_key, elevenlabs_agent_id, settings),
+    )
+
+    return LiveSessionResponse(
+        session_details=session_details,
+        voice_agent_details=VoiceAgentDetails(
+            agent_id=elevenlabs_agent_id,
+            signed_url=signed_url.signed_url,
+            dynamic_variables={INTERVIEW_PACKET_DYNAMIC_VARIABLE: prompt.prompt.strip()},
+        ),
+    )
 
 
 def get_provider_http_client(request: Request) -> httpx.AsyncClient:
@@ -131,6 +155,6 @@ def public_interview_metadata(prompt: InterviewPrompt) -> InterviewCatalogItem:
     """Build the browser contract from an explicit public-field allowlist."""
     return InterviewCatalogItem(
         packet_id=prompt.prompt_id,
-        title=prompt.display_name,
-        skill_level=prompt.skill_level,
+        title=prompt.metadata.display_name,
+        skill_level=prompt.metadata.skill_level,
     )

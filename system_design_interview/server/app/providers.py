@@ -50,7 +50,6 @@ async def get_elevenlabs_signed_url(
         "ElevenLabs signed URL request failed",
         params={
             "agent_id": agent_id,
-            "include_conversation_id": "true",
         },
     )
 

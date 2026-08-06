@@ -146,18 +146,6 @@ describe("interview API", () => {
     );
   });
 
-  it("rejects catalog entries outside the expected public shape", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(okResponse({
-        interviews: [{ packetId: "private-packet", prompt: "hidden" }]
-      }))
-    );
-
-    await expect(getInterviewPackets()).rejects.toThrow(
-      "Interview catalog response was invalid."
-    );
-  });
 });
 
 function okResponse(payload: unknown): Response {

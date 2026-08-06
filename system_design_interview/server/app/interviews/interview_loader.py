@@ -17,8 +17,7 @@ PROMPT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 @dataclass(frozen=True)
 class InterviewPrompt:
     prompt_id: str
-    display_name: str
-    skill_level: Literal["Intern", "Junior", "Senior"]
+    metadata: InterviewPromptMetadata
     prompt: str
     source_path: Path
 
@@ -59,8 +58,7 @@ def load_interview_prompt(path: Path) -> InterviewPrompt:
 
     return InterviewPrompt(
         prompt_id=prompt_id,
-        display_name=metadata.display_name,
-        skill_level=metadata.skill_level,
+        metadata=metadata,
         prompt=prompt,
         source_path=path,
     )

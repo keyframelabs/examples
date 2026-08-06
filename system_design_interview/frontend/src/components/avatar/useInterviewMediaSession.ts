@@ -114,7 +114,7 @@ export function useInterviewMediaSession({
       stopMediaStream(userCameraStreamRef.current);
       userCameraStreamRef.current = null;
       void cleanupRuntime().catch((error) => {
-        console.error("Failed to clean up Lyra.", error);
+        console.error("Failed to clean up avatar.", error);
       });
     };
   }, []);
@@ -144,7 +144,7 @@ export function useInterviewMediaSession({
       if (!nextTimer.hasExpired) return;
 
       if (interval !== undefined) window.clearInterval(interval);
-      void disconnectLyra();
+      void disconnectAvatar();
     };
 
     updateTimer();
@@ -190,16 +190,16 @@ export function useInterviewMediaSession({
           logEvent(`Avatar playback: ${nextStatus}`);
         },
         onDisconnect: () => {
-          logEvent("Lyra disconnected");
+          logEvent("Avatar disconnected");
           if (closeState.expected || closeState.disconnectHandled) return;
 
           closeState.disconnectHandled = true;
-          handleUnexpectedDisconnect("Lyra disconnected.");
+          handleUnexpectedDisconnect("Avatar disconnected.");
         },
         onError: (error) => {
           connectError = error.message;
           logEvent(`PersonaView error: ${error.message}`);
-          showAvatarError(`Lyra error: ${error.message}`);
+          showAvatarError(`Avatar error: ${error.message}`);
         }
       });
       const contextSync = createCanvasContextSync({
@@ -214,11 +214,11 @@ export function useInterviewMediaSession({
         closeState
       };
 
-      logEvent("Connecting Lyra");
+      logEvent("Connecting avatar");
       await view.connect();
       if (!isMountedRef.current) return;
       if (view.status !== "connected") {
-        throw new Error(connectError ?? "Lyra failed to connect.");
+        throw new Error(connectError ?? "Avatar failed to connect.");
       }
 
       const runtime = runtimeRef.current;
@@ -238,14 +238,14 @@ export function useInterviewMediaSession({
       logEvent("Canvas context sync started");
       setIsConnected(true);
       commitInterviewTimer(startInterviewTimer(Date.now()));
-      logEvent("Lyra connected");
+      logEvent("Avatar connected");
     } catch (error) {
       if (!isMountedRef.current) return;
       try {
         await cleanupRuntime();
       } catch (cleanupError) {
         console.error(
-          "Failed to clean up Lyra after connection error.",
+          "Failed to clean up avatar after connection error.",
           cleanupError
         );
       }
@@ -325,7 +325,7 @@ export function useInterviewMediaSession({
     void enableCamera();
   }
 
-  async function disconnectLyra() {
+  async function disconnectAvatar() {
     commitInterviewTimer(
       stopInterviewTimer(interviewTimerRef.current, Date.now())
     );
@@ -343,9 +343,9 @@ export function useInterviewMediaSession({
     }
   }
 
-  function toggleLyra() {
+  function toggleAvatar() {
     if (isConnected) {
-      void disconnectLyra();
+      void disconnectAvatar();
       return;
     }
 
@@ -451,7 +451,7 @@ export function useInterviewMediaSession({
     events,
     canvasSyncStatus,
     toggleCamera,
-    toggleLyra
+    toggleAvatar
   };
 }
 
@@ -462,5 +462,5 @@ function clearContainer(container: HTMLElement) {
 function formatAvatarError(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "Could not connect Lyra.";
+    : "Could not connect avatar.";
 }

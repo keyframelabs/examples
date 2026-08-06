@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,7 +24,6 @@ class ElevenLabsSignedUrlResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     signed_url: str
-    conversation_id: Optional[str] = None
 
 
 class VoiceAgentDetails(BaseModel):
@@ -41,7 +40,6 @@ class LiveSessionResponse(BaseModel):
 
     session_details: KeyframeSessionDetails = Field(alias="sessionDetails")
     voice_agent_details: VoiceAgentDetails = Field(alias="voiceAgentDetails")
-    conversation_id: Optional[str] = Field(default=None, alias="conversationId")
 
 
 class InterviewCatalogItem(BaseModel):

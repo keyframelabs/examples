@@ -20,7 +20,6 @@ type VoiceAgentDetails = PersonaVoiceAgentDetails & {
 export type LiveSessionResponse = {
   sessionDetails: KeyframeSessionDetails;
   voiceAgentDetails: VoiceAgentDetails;
-  conversationId?: string;
 };
 
 export type InterviewPacket = {
@@ -34,16 +33,10 @@ export async function getInterviewPackets(
 ): Promise<InterviewPacket[]> {
   const url = `${API_BASE_URL}/api/interviews`;
   const response = await fetchInterviewCatalog(url, signal);
-  const payload = await parseResponse(response);
-  if (!isRecord(payload) || !Array.isArray(payload.interviews)) {
-    throw new Error("Interview catalog response was invalid.");
-  }
-
-  const interviews = payload.interviews.filter(isInterviewPacket);
-  if (interviews.length !== payload.interviews.length) {
-    throw new Error("Interview catalog response was invalid.");
-  }
-  return interviews;
+  const payload = await parseResponse(response) as {
+    interviews: InterviewPacket[];
+  };
+  return payload.interviews;
 }
 
 async function fetchInterviewCatalog(
@@ -118,18 +111,6 @@ export async function createLiveSession(
   }
 
   return payload;
-}
-
-function isInterviewPacket(value: unknown): value is InterviewPacket {
-  if (!isRecord(value)) return false;
-
-  return (
-    typeof value.packetId === "string" &&
-    typeof value.title === "string" &&
-    (value.skillLevel === "Intern" ||
-      value.skillLevel === "Junior" ||
-      value.skillLevel === "Senior")
-  );
 }
 
 async function parseResponse(response: Response): Promise<unknown> {

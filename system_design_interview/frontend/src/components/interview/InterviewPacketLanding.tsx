@@ -41,7 +41,7 @@ import {
 import { getInterviewPackets, type InterviewPacket } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const LYRA_STILL_URL =
+const AVATAR_STILL_URL =
   "https://storage-public.keyframelabs.com/personas/b6dad089-2dd4-4012-9f6c-53b8aec8d4f5/cover.jpeg";
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -222,7 +222,7 @@ export function InterviewPacketLanding({
         <header className="mx-auto mb-6 max-w-5xl text-center">
           <div className="mx-auto mb-3 size-36 overflow-hidden rounded-3xl border-2 border-foreground bg-muted shadow-md sm:size-44">
             <img
-              src={LYRA_STILL_URL}
+              src={AVATAR_STILL_URL}
               alt="Lyra, your AI system design interviewer"
               className="h-full w-full object-cover"
             />

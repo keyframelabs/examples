@@ -7,7 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.interviews.interview_loader import InterviewPrompt, InterviewPromptValidationError
+from app.interviews.interview_loader import (
+    InterviewPrompt,
+    InterviewPromptMetadata,
+    InterviewPromptValidationError,
+)
 
 
 class StubResponse:
@@ -69,17 +73,17 @@ def test_interview_catalog_exposes_only_public_metadata() -> None:
     prompts = sorted(
         main.load_interview_prompts().values(),
         key=lambda prompt: (
-            main.SKILL_LEVEL_ORDER[prompt.skill_level],
-            prompt.display_name.casefold(),
-            prompt.display_name,
+            main.SKILL_LEVEL_ORDER[prompt.metadata.skill_level],
+            prompt.metadata.display_name.casefold(),
+            prompt.metadata.display_name,
             prompt.prompt_id,
         ),
     )
     assert interviews == [
         {
             "packetId": prompt.prompt_id,
-            "title": prompt.display_name,
-            "skillLevel": prompt.skill_level,
+            "title": prompt.metadata.display_name,
+            "skillLevel": prompt.metadata.skill_level,
         }
         for prompt in prompts
     ]
@@ -104,15 +108,13 @@ def test_backend_startup_validates_and_snapshots_packets_without_provider_reques
 ) -> None:
     default_prompt = InterviewPrompt(
         prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
-        display_name="TinyURL",
-        skill_level="Junior",
+        metadata=InterviewPromptMetadata(display_name="TinyURL", skill_level="Junior"),
         prompt="# TinyURL prompt\n",
         source_path=Path("tinyurl.md"),
     )
     future_prompt = InterviewPrompt(
         prompt_id="future-interview",
-        display_name="Future",
-        skill_level="Senior",
+        metadata=InterviewPromptMetadata(display_name="Future", skill_level="Senior"),
         prompt="# Future prompt\n",
         source_path=Path("future.md"),
     )
@@ -206,7 +208,6 @@ def test_create_session_endpoint_returns_selected_packet_dynamic_variable(
             return StubResponse(
                 body={
                     "signed_url": "wss://elevenlabs.example/conversation",
-                    "conversation_id": "conversation_123",
                 }
             )
 
@@ -230,7 +231,6 @@ def test_create_session_endpoint_returns_selected_packet_dynamic_variable(
                 "interview_packet": expected_prompt,
             },
         },
-        "conversationId": "conversation_123",
     }
 
     keyframe_request = next(
@@ -260,7 +260,6 @@ def test_create_session_endpoint_returns_selected_packet_dynamic_variable(
             "headers": {"xi-api-key": "eleven-key"},
             "params": {
                 "agent_id": "agent_123",
-                "include_conversation_id": "true",
             },
         },
     }
@@ -274,8 +273,10 @@ def test_catalog_and_session_validation_share_the_startup_snapshot(
 ) -> None:
     startup_prompt = InterviewPrompt(
         prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
-        display_name="TinyURL startup snapshot",
-        skill_level="Junior",
+        metadata=InterviewPromptMetadata(
+            display_name="TinyURL startup snapshot",
+            skill_level="Junior",
+        ),
         prompt="# Private startup prompt\n",
         source_path=Path("tinyurl.md"),
     )
