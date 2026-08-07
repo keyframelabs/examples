@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --primary: #262626;
+  --primary-foreground: #fafafa;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #262626;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #f5f5f5;
+  --accent-foreground: #262626;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e5e5e5;
+  --input: #d4d4d4;
+  --ring: #737373;
+  --message-user: #0a84ff;
+  --message-user-foreground: #ffffff;
+  --message-avatar: #ffffff;
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-heading: ui-serif, Georgia, serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-message-user: var(--message-user);
+  --color-message-user-foreground: var(--message-user-foreground);
+  --color-message-avatar: var(--message-avatar);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+.feedback-bubble {
+  animation: feedback-in 200ms ease-out both;
+}
+
+.feedback-bubble--ready-to-fade {
+  animation: feedback-bubble-out 400ms ease-in forwards;
+}
+
+.typing-dot {
+  animation: typing 1.2s ease-in-out infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 150ms; }
+.typing-dot:nth-child(3) { animation-delay: 300ms; }
+
+.bilingual-segment[data-active="true"] {
+  background: rgb(34 197 94 / 16%);
+  box-shadow: inset 0 0 0 1px rgb(21 128 61 / 38%);
+}
+
+.power-meter-segment {
+  position: relative;
+  height: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.125rem;
+  background: var(--secondary);
+}
+
+.power-meter-segment--lit {
+  border-color: #f59e0b;
+  background: linear-gradient(90deg, #ef4444, #f97316 45%, #facc15);
+  box-shadow: 0 0 0.65rem rgb(249 115 22 / 45%);
+}
+
+.multiplier-bump,
+.multiplier-shake {
+  display: inline-block;
+}
+
+.multiplier-bump { animation: multiplier-bump 650ms cubic-bezier(0.2, 0.9, 0.25, 1.35); }
+.multiplier-shake { animation: multiplier-shake 900ms ease-in-out 650ms infinite; }
+
+@keyframes feedback-in {
+  from { opacity: 0; transform: translateY(0.25rem); }
+}
+
+@keyframes feedback-bubble-out {
+  to { opacity: 0; transform: translateY(-0.25rem); }
+}
+
+@keyframes typing {
+  0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-0.2rem); }
+}
+
+@keyframes multiplier-bump {
+  0% { transform: scale(0.72) rotate(-8deg); }
+  55% { transform: scale(1.35) rotate(5deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes multiplier-shake {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-3deg) translateX(-0.04rem); }
+  40% { transform: rotate(3deg) translateX(0.04rem); }
+  60% { transform: rotate(-2deg); }
+  80% { transform: rotate(2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-bubble,
+  .feedback-bubble--ready-to-fade,
+  .typing-dot,
+  .multiplier-bump,
+  .multiplier-shake { animation: none; }
+  .power-confetti { display: none; }
+  .feedback-bubble--ready-to-fade { opacity: 0; }
+}
+
+@page {
+  size: Letter;
+  margin: 0.5in;
+}

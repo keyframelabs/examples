@@ -1,0 +1,7 @@
+packages:
+  - frontend
+verifyDepsBeforeRun: false
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@keyframelabs/elements@0.6.2'
