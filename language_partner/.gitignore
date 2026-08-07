@@ -1,0 +1,12 @@
+.env
+node_modules/
+frontend/dist/
+.venv/
+.pnpm-store/
+.ruff_cache/
+__pycache__/
+*.pyc
+# Preserve existing local logs without tracking their contents.
+logs/
+.vite/
+.codex/readups/

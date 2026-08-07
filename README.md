@@ -4,6 +4,7 @@ A collection of runnable examples for building with Keyframe Labs' human foundat
 
 ## Current demos
 
+- [Habla — Spanish Language Partner](language_partner/README.md)
 - [System Design Interviewer](system_design_interview/README.md)
 
 ## Learn more
