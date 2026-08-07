@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2") format("woff2");
+}
+
+:root {
+  --background: oklch(0.9643 0.007 88.6428);
+  --foreground: oklch(0.2166 0.0057 106.8685);
+  --card: oklch(0.982 0.0041 91.4458);
+  --card-foreground: oklch(0.2166 0.0057 106.8685);
+  --primary: oklch(0.2166 0.0057 106.8685);
+  --primary-foreground: oklch(0.9643 0.007 88.6428);
+  --secondary: oklch(0.9462 0.0111 89.7242);
+  --muted: oklch(0.9462 0.0111 89.7242);
+  --muted-foreground: oklch(0.5286 0.0146 86.873);
+  --accent: oklch(0.931 0.0119 133.3805);
+  --accent-foreground: oklch(0.4489 0.0325 145.0094);
+  --destructive: oklch(0.3958 0.1331 25.723);
+  --destructive-foreground: oklch(0.9643 0.007 88.6428);
+  --border: oklch(0.9128 0 0);
+  --ring: oklch(0.2166 0.0057 106.8685);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --shadow-xs: 2.5px 2.5px 0 0 hsl(0 0% 1.9608% / 0.5);
+  --shadow-sm: 2.5px 2.5px 0 0 hsl(0 0% 1.9608%), 2.5px 1px 2px -1px hsl(0 0% 1.9608%);
+  --shadow-md: 2.5px 2.5px 0 0 hsl(0 0% 1.9608%), 2.5px 2px 4px -1px hsl(0 0% 1.9608%);
+  --shadow-lg: 2.5px 2.5px 0 0 hsl(0 0% 1.9608%), 2.5px 4px 6px -1px hsl(0 0% 1.9608%);
+  --tracking-normal: -0.01em;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0.025rem;
+  --radius-xl: 0.275rem;
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
+  }
+
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+.feedback-bubble {
+  animation: feedback-bubble-in 400ms ease-out both;
+}
+
+.feedback-bubble--ready-to-fade {
+  animation: feedback-bubble-out 8s ease-in-out forwards;
+  will-change: opacity, transform;
+}
+
+@keyframes feedback-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes feedback-bubble-out {
+  0%, 88% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-bubble,
+  .feedback-bubble--ready-to-fade {
+    animation: none;
+  }
+}
+
+@page {
+  size: Letter;
+  margin: 0.5in;
+}

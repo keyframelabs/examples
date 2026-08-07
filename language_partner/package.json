@@ -1,0 +1,17 @@
+{
+  "name": "language-tutor",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,green \"uv run python -m uvicorn backend.main:app --host localhost --port ${PORT:-8788} --reload --env-file .env\" \"pnpm --filter @language-tutor/frontend dev\"",
+    "build": "pnpm typecheck && pnpm --filter @language-tutor/frontend build",
+    "typecheck": "pnpm --filter @language-tutor/frontend typecheck",
+    "test": "uv run python -m pytest",
+    "lint:backend": "uv run ruff check backend tests",
+    "format:check": "uv run ruff format --check backend tests",
+    "check": "pnpm build && pnpm test && pnpm lint:backend && pnpm format:check"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}

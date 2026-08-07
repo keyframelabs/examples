@@ -1,0 +1,12 @@
+.env
+node_modules/
+frontend/dist/
+.venv/
+.pnpm-store/
+.pytest_cache/
+.ruff_cache/
+tests/fixtures/openrouter-log.json
+__pycache__/
+*.pyc
+logs/
+.vite/
