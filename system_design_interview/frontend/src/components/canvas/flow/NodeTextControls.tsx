@@ -1,91 +1,84 @@
 import {
   useRef,
   type CSSProperties,
-  type FocusEvent,
   type ReactNode,
   type RefObject
 } from "react";
 
-import type { SystemNodeData } from "@/components/canvas/flow/adapters";
+import { useCanvasActions } from "@/components/canvas/flow/CanvasActionsContext";
 import { handleTextEditorKeyDown } from "@/components/canvas/flow/textEditing";
-import type { CanvasNode } from "@/components/canvas/model/types";
 import { cn } from "@/lib/utils";
 
 export function TextNode({
-  node,
-  data,
+  id,
+  label,
   selected
 }: {
-  node: Extract<CanvasNode, { kind: "text" }>;
-  data: SystemNodeData;
+  id: string;
+  label: string;
   selected: boolean;
 }) {
+  const actions = useCanvasActions();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoFocus = actions.autoFocusNodeId === id;
 
   return (
-    <NodeTextDragSurface
+    <TextDragSurface
       controlRef={textareaRef}
       className={cn(
-        "h-full w-full text-left font-medium",
+        "h-full w-full text-left text-base font-medium",
         selected && "ring-1 ring-primary"
       )}
-      style={{ fontSize: node.fontSize }}
     >
       <textarea
         ref={textareaRef}
         aria-label="canvas text"
         placeholder="Write a note"
-        value={node.label}
-        autoFocus={data.autoFocus}
+        value={label}
+        autoFocus={autoFocus}
         spellCheck
         className="nopan nowheel pointer-events-none h-full w-full resize-none overflow-auto rounded-md border-0 bg-transparent p-0 text-left font-medium outline-none placeholder:text-muted-foreground/60 focus:ring-1 focus:ring-primary"
         onKeyDown={(event) =>
-          handleTextEditorKeyDown(event, data.onEditComplete, {
+          handleTextEditorKeyDown(event, actions.onEditComplete, {
             multiline: true
           })
         }
         onFocus={() => {
-          if (data.autoFocus) data.onAutoFocusHandled(node.id);
-          data.onEditStart();
+          if (autoFocus) actions.onAutoFocusHandled(id);
+          actions.onEditStart();
         }}
-        onBlur={data.onEditEnd}
+        onBlur={actions.onEditEnd}
         onChange={(event) =>
-          data.onLabelChange(node.id, event.currentTarget.value)
+          actions.onNodeLabelChange(id, event.currentTarget.value)
         }
       />
-    </NodeTextDragSurface>
+    </TextDragSurface>
   );
 }
 
 export function InlineInput({
+  nodeId,
   ariaLabel,
   placeholder,
   value,
-  autoFocus = false,
-  onAutoFocus,
-  onFocus,
-  onBlur,
-  onEditComplete,
   onChange,
   className,
   style
 }: {
+  nodeId: string;
   ariaLabel: string;
   placeholder: string;
   value: string;
-  autoFocus?: boolean;
-  onAutoFocus?: () => void;
-  onFocus: () => void;
-  onBlur: () => void;
-  onEditComplete: () => void;
   onChange: (value: string) => void;
   className?: string;
   style?: CSSProperties;
 }) {
+  const actions = useCanvasActions();
   const inputRef = useRef<HTMLInputElement>(null);
+  const autoFocus = actions.autoFocusNodeId === nodeId;
 
   return (
-    <NodeTextDragSurface
+    <TextDragSurface
       controlRef={inputRef}
       className={cn("w-full", className)}
       style={style}
@@ -98,27 +91,29 @@ export function InlineInput({
         autoFocus={autoFocus}
         spellCheck
         className="nopan pointer-events-none h-full w-full border-0 bg-transparent px-1 py-0.5 outline-none placeholder:text-muted-foreground/60 focus:rounded-sm focus:bg-card/80 focus:ring-1 focus:ring-primary"
-        style={{
-          color: "inherit",
-          font: "inherit",
-          textAlign: "inherit"
-        }}
+        style={{ color: "inherit", font: "inherit", textAlign: "inherit" }}
         onKeyDown={(event) =>
-          handleTextEditorKeyDown(event, onEditComplete)
+          handleTextEditorKeyDown(event, actions.onEditComplete)
         }
-        onFocus={(event: FocusEvent<HTMLInputElement>) => {
+        onFocus={(event) => {
           event.stopPropagation();
-          if (autoFocus) onAutoFocus?.();
-          onFocus();
+          if (autoFocus) actions.onAutoFocusHandled(nodeId);
+          actions.onEditStart();
         }}
-        onBlur={onBlur}
+        onBlur={actions.onEditEnd}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
-    </NodeTextDragSurface>
+    </TextDragSurface>
   );
 }
 
-function NodeTextDragSurface({
+/**
+ * Lets one surface serve both node dragging and click-to-edit: the wrapped
+ * control ignores pointer events, and a click that never crossed the drag
+ * threshold focuses it. React Flow offers no built-in way to distinguish the
+ * two on a full-bleed input.
+ */
+function TextDragSurface({
   controlRef,
   className,
   style,
@@ -129,11 +124,7 @@ function NodeTextDragSurface({
   style?: CSSProperties;
   children: ReactNode;
 }) {
-  const pointerStartRef = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-  } | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const didDragRef = useRef(false);
 
   return (
@@ -145,24 +136,14 @@ function NodeTextDragSurface({
       style={style}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
-        pointerStartRef.current = {
-          pointerId: event.pointerId,
-          x: event.clientX,
-          y: event.clientY
-        };
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
         didDragRef.current = false;
       }}
       onPointerMove={(event) => {
         const start = pointerStartRef.current;
-        if (!start || start.pointerId !== event.pointerId) return;
-        const distance = Math.hypot(
-          event.clientX - start.x,
-          event.clientY - start.y
-        );
-        if (distance >= 4) didDragRef.current = true;
-      }}
-      onPointerCancel={() => {
-        pointerStartRef.current = null;
+        if (!start) return;
+        didDragRef.current ||=
+          Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 4;
       }}
       onClick={(event) => {
         event.stopPropagation();
@@ -175,8 +156,7 @@ function NodeTextDragSurface({
         const control = controlRef.current;
         if (!control) return;
         control.focus();
-        const end = control.value.length;
-        control.setSelectionRange(end, end);
+        control.setSelectionRange(control.value.length, control.value.length);
       }}
       onDoubleClick={(event) => event.stopPropagation()}
     >

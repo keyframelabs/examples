@@ -36,8 +36,8 @@ export const Alert = forwardRef<HTMLDivElement, AlertProps>(
 Alert.displayName = "Alert";
 
 export const AlertDescription = forwardRef<
-  HTMLParagraphElement,
-  HTMLAttributes<HTMLParagraphElement>
+  HTMLDivElement,
+  HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div ref={ref} className={cn("text-sm [&_p]:leading-relaxed", className)} {...props} />
 ));

@@ -1,25 +1,7 @@
 import Autoplay from "embla-carousel-autoplay";
-import {
-  AlertCircle,
-  Database,
-  Loader2,
-  Pause,
-  Play
-} from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent
-} from "react";
+import { AlertCircle, Database, Loader2, Pause, Play } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import {
-  getAvailableSkillLevels,
-  getInitialSkillLevel,
-  SKILL_LEVELS,
-  type SkillLevel
-} from "@/components/interview/interviewPacketSelection";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,94 +14,90 @@ import {
   CarouselNext,
   CarouselPrevious
 } from "@/components/ui/carousel";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getInterviewPackets, type InterviewPacket } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const AVATAR_STILL_URL =
   "https://storage-public.keyframelabs.com/personas/b6dad089-2dd4-4012-9f6c-53b8aec8d4f5/cover.jpeg";
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
-function shouldStartAutoplay() {
-  return typeof window === "undefined"
-    || typeof window.matchMedia !== "function"
-    || !window.matchMedia(REDUCED_MOTION_QUERY).matches;
+const SKILL_LEVELS = ["Intern", "Junior", "Senior"] as const;
+type SkillLevel = (typeof SKILL_LEVELS)[number];
+
+type CatalogState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; packets: InterviewPacket[] };
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
-
-type InterviewPacketLandingProps = {
-  onStartInterview: (packet: InterviewPacket) => void;
-};
 
 export function InterviewPacketLanding({
   onStartInterview
-}: InterviewPacketLandingProps) {
-  const [packets, setPackets] = useState<InterviewPacket[]>([]);
+}: {
+  onStartInterview: (packet: InterviewPacket) => void;
+}) {
+  const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [activeSkillLevel, setActiveSkillLevel] =
     useState<SkillLevel>("Intern");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading"
-  );
-  const [error, setError] = useState<string | null>(null);
   const [isAutoplayPlaying, setIsAutoplayPlaying] = useState(
-    shouldStartAutoplay
+    () => !prefersReducedMotion()
   );
   const [autoplayPlugin] = useState(() =>
     Autoplay({
       delay: 2000,
-      playOnInit: shouldStartAutoplay(),
+      playOnInit: !prefersReducedMotion(),
       stopOnInteraction: true,
       stopOnMouseEnter: false
     })
   );
-  const carouselPlugins = useMemo(
-    () => [autoplayPlugin],
-    [autoplayPlugin]
-  );
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const autoplayStoppedByUser = useRef(!shouldStartAutoplay());
-  const availableSkillLevels = useMemo(
-    () => getAvailableSkillLevels(packets),
-    [packets]
+  const autoplayStoppedByUser = useRef(prefersReducedMotion());
+
+  const packets = catalog.status === "ready" ? catalog.packets : [];
+  const availableSkillLevels = new Set(
+    packets.map((packet) => packet.skillLevel)
   );
-  const visiblePackets = useMemo(
-    () =>
-      packets.filter((packet) => packet.skillLevel === activeSkillLevel),
-    [activeSkillLevel, packets]
+  const visiblePackets = packets.filter(
+    (packet) => packet.skillLevel === activeSkillLevel
   );
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadPackets(controller.signal);
-    return () => controller.abort();
 
-    async function loadPackets(signal: AbortSignal) {
-      setStatus("loading");
-      setError(null);
-      try {
-        const loadedPackets = await getInterviewPackets(signal);
-        if (signal.aborted) return;
-        setPackets(loadedPackets);
-        setActiveSkillLevel(getInitialSkillLevel(loadedPackets));
-        setSelectedIndex(0);
-        setStatus("ready");
-      } catch (loadError) {
-        if (signal.aborted) return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load interview packets."
+    setCatalog({ status: "loading" });
+    getInterviewPackets(controller.signal).then(
+      (loadedPackets) => {
+        setCatalog({ status: "ready", packets: loadedPackets });
+        setActiveSkillLevel(
+          SKILL_LEVELS.find((level) =>
+            loadedPackets.some((packet) => packet.skillLevel === level)
+          ) ?? "Intern"
         );
-        setStatus("error");
+        setSelectedIndex(0);
+      },
+      (loadError: unknown) => {
+        if (controller.signal.aborted) return;
+        setCatalog({
+          status: "error",
+          message:
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load interview packets."
+        });
       }
-    }
-  }, []);
+    );
+
+    return () => controller.abort();
+  }, [loadAttempt]);
 
   useEffect(() => {
     if (!carouselApi) return;
@@ -160,11 +138,18 @@ export function InterviewPacketLanding({
     setIsAutoplayPlaying(false);
   }
 
+  function toggleAutoplay() {
+    if (autoplayPlugin.isPlaying()) {
+      stopAutoplay();
+    } else {
+      autoplayStoppedByUser.current = false;
+      autoplayPlugin.play();
+      setIsAutoplayPlaying(autoplayPlugin.isPlaying());
+    }
+  }
+
   function selectPacket(index: number, moveFocus = false) {
-    const nextIndex = Math.max(
-      0,
-      Math.min(index, visiblePackets.length - 1)
-    );
+    const nextIndex = Math.max(0, Math.min(index, visiblePackets.length - 1));
     stopAutoplay();
     setSelectedIndex(nextIndex);
     carouselApi?.scrollTo(nextIndex);
@@ -191,29 +176,16 @@ export function InterviewPacketLanding({
     selectPacket(nextIndex, true);
   }
 
-  function toggleAutoplay() {
-    if (autoplayPlugin.isPlaying()) {
-      stopAutoplay();
-    } else {
-      autoplayStoppedByUser.current = false;
-      autoplayPlugin.play();
-      setIsAutoplayPlaying(autoplayPlugin.isPlaying());
-    }
-  }
-
   function changeSkillLevel(value: string) {
-    if (
-      !isSkillLevel(value)
-      || !availableSkillLevels.has(value)
-      || value === activeSkillLevel
-    ) {
+    const level = SKILL_LEVELS.find((skillLevel) => skillLevel === value);
+    if (!level || !availableSkillLevels.has(level) || level === activeSkillLevel) {
       return;
     }
     stopAutoplay();
     setCarouselApi(undefined);
     setSelectedIndex(0);
     cardRefs.current = [];
-    setActiveSkillLevel(value);
+    setActiveSkillLevel(level);
   }
 
   return (
@@ -236,7 +208,7 @@ export function InterviewPacketLanding({
           aria-hidden="true"
         />
 
-        {status === "loading" ? (
+        {catalog.status === "loading" ? (
           <Card
             className="mx-auto flex min-h-72 w-full max-w-2xl items-center justify-center p-8"
             aria-live="polite"
@@ -248,24 +220,24 @@ export function InterviewPacketLanding({
           </Card>
         ) : null}
 
-        {status === "error" ? (
+        {catalog.status === "error" ? (
           <Card className="mx-auto w-full max-w-2xl p-6">
             <Alert variant="destructive">
               <AlertCircle className="size-4" />
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{catalog.message}</AlertDescription>
             </Alert>
             <Button
               type="button"
               variant="outline"
               className="mt-4 w-full"
-              onClick={() => window.location.reload()}
+              onClick={() => setLoadAttempt((attempt) => attempt + 1)}
             >
               Try again
             </Button>
           </Card>
         ) : null}
 
-        {status === "ready" && packets.length === 0 ? (
+        {catalog.status === "ready" && packets.length === 0 ? (
           <Card className="mx-auto w-full max-w-2xl p-8 text-center">
             <Database className="mx-auto mb-3 size-7 text-muted-foreground" />
             <h2 className="text-lg font-semibold">No interview packets yet</h2>
@@ -276,24 +248,19 @@ export function InterviewPacketLanding({
           </Card>
         ) : null}
 
-        {status === "ready" && packets.length > 0 ? (
-          <Tabs
-            value={activeSkillLevel}
-            onValueChange={changeSkillLevel}
-          >
+        {catalog.status === "ready" && packets.length > 0 ? (
+          <Tabs value={activeSkillLevel} onValueChange={changeSkillLevel}>
             <Carousel
               key={activeSkillLevel}
               setApi={setCarouselApi}
-              plugins={carouselPlugins}
+              plugins={[autoplayPlugin]}
               opts={{
                 align: "center",
                 loop: visiblePackets.length > 1
               }}
               aria-label={`${activeSkillLevel} interview packet carousel`}
             >
-              <div
-                className="mb-3 flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-              >
+              <div className="mb-3 flex flex-col gap-3 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <TabsList
                   className="mx-auto grid w-full max-w-sm grid-cols-3 sm:mx-0 sm:w-auto"
                   aria-label="Interview experience level"
@@ -353,10 +320,7 @@ export function InterviewPacketLanding({
                 </div>
               </div>
 
-              <TabsContent
-                value={activeSkillLevel}
-                className="mt-0"
-              >
+              <TabsContent value={activeSkillLevel} className="mt-0">
                 <CarouselContent
                   role="radiogroup"
                   aria-label={`${activeSkillLevel} interview packets`}
@@ -380,9 +344,7 @@ export function InterviewPacketLanding({
                           tabIndex={isSelected ? 0 : -1}
                           className="h-full w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                           onClick={() => selectPacket(index)}
-                          onKeyDown={(event) =>
-                            handleCardKeyDown(event, index)
-                          }
+                          onKeyDown={(event) => handleCardKeyDown(event, index)}
                         >
                           <Card
                             className={cn(
@@ -415,9 +377,7 @@ export function InterviewPacketLanding({
                 size="lg"
                 className="w-full max-w-sm font-semibold sm:w-auto sm:min-w-64"
                 disabled={!selectedPacket}
-                onClick={() =>
-                  selectedPacket && onStartInterview(selectedPacket)
-                }
+                onClick={() => selectedPacket && onStartInterview(selectedPacket)}
               >
                 Begin interview
               </Button>
@@ -427,8 +387,4 @@ export function InterviewPacketLanding({
       </div>
     </section>
   );
-}
-
-function isSkillLevel(value: string): value is SkillLevel {
-  return SKILL_LEVELS.some((skillLevel) => skillLevel === value);
 }

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,12 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .interviews.interview_loader import DEFAULT_INTERVIEW_PROMPT_ID
 
 
-class HealthResponse(BaseModel):
-    ok: bool
-    service: str
-
-
 class KeyframeSessionDetails(BaseModel):
+    # extra="allow": the frontend forwards sessionDetails wholesale to the avatar SDK.
     model_config = ConfigDict(extra="allow")
 
     server_url: str
@@ -21,8 +15,6 @@ class KeyframeSessionDetails(BaseModel):
 
 
 class ElevenLabsSignedUrlResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
     signed_url: str
 
 

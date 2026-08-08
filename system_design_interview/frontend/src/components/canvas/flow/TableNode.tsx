@@ -1,22 +1,23 @@
 import type { PointerEvent } from "react";
 
-import type { SystemNodeData } from "@/components/canvas/flow/adapters";
+import { useCanvasActions } from "@/components/canvas/flow/CanvasActionsContext";
 import { InlineInput } from "@/components/canvas/flow/NodeTextControls";
 import { NODE_COLORS } from "@/components/canvas/flow/nodeStyles";
-import { TABLE_FIELD_HEIGHT } from "@/components/canvas/model/tableLayout";
-import type {
-  CanvasField,
-  CanvasTableNode
-} from "@/components/canvas/model/types";
+import { TABLE_FIELD_HEIGHT } from "@/components/canvas/tableLayout";
+import type { CanvasField } from "@/components/canvas/types";
 import { cn } from "@/lib/utils";
 
 export function TableNode({
-  node,
-  data
+  id,
+  label,
+  fields
 }: {
-  node: CanvasTableNode;
-  data: SystemNodeData;
+  id: string;
+  label: string;
+  fields: CanvasField[];
 }) {
+  const actions = useCanvasActions();
+
   return (
     <div
       className="h-full w-full overflow-hidden rounded-lg border-[1.5px] shadow-xs"
@@ -33,35 +34,26 @@ export function TableNode({
         }}
       >
         <InlineInput
+          nodeId={id}
           ariaLabel="table title"
           placeholder="Table title"
-          value={node.label}
-          autoFocus={data.autoFocus}
-          onAutoFocus={() => data.onAutoFocusHandled(node.id)}
-          onFocus={data.onEditStart}
-          onBlur={data.onEditEnd}
-          onEditComplete={data.onEditComplete}
-          onChange={(value) => data.onLabelChange(node.id, value)}
+          value={label}
+          onChange={(value) => actions.onNodeLabelChange(id, value)}
           className="text-lg font-bold"
         />
       </div>
-      <div className="px-2 pt-[10px] text-[12px] text-canvas-node-service-foreground">
-        {node.fields.map((field) => (
-          <TableFieldRow
-            key={field.id}
-            tableId={node.id}
-            field={field}
-            data={data}
-          />
+      <div className="px-2 pt-[10px] text-[12px] text-canvas-node-table-foreground">
+        {fields.map((field) => (
+          <TableFieldRow key={field.id} tableId={id} field={field} />
         ))}
         <button
           type="button"
-          aria-label={`Add row to ${node.label || "table"}`}
+          aria-label={`Add row to ${label || "table"}`}
           className="nodrag nopan mt-1 h-6 rounded px-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           onPointerDown={stopPointerPropagation}
           onClick={(event) => {
             event.stopPropagation();
-            data.onAddField(node.id);
+            actions.onAddField(id);
           }}
         >
           + Row
@@ -73,13 +65,13 @@ export function TableNode({
 
 function TableFieldRow({
   tableId,
-  field,
-  data
+  field
 }: {
   tableId: string;
   field: CanvasField;
-  data: SystemNodeData;
 }) {
+  const actions = useCanvasActions();
+
   return (
     <div
       data-canvas-field-id={field.id}
@@ -87,26 +79,30 @@ function TableFieldRow({
       style={{ height: TABLE_FIELD_HEIGHT }}
     >
       <InlineInput
+        nodeId={tableId}
         ariaLabel="column name"
         placeholder="Column name"
         value={field.text}
-        onFocus={data.onEditStart}
-        onBlur={data.onEditEnd}
-        onEditComplete={data.onEditComplete}
-        onChange={(value) => data.onFieldTextChange(tableId, field.id, value)}
+        onChange={(value) =>
+          actions.onFieldTextChange(tableId, field.id, value)
+        }
         className="min-w-0 flex-1 text-sm"
       />
       <KeyToggle
         label="PK"
         fieldLabel={field.text || "blank row"}
-        active={Boolean(field.primaryKey)}
-        onToggle={() => data.onToggleFieldKey(tableId, field.id, "primaryKey")}
+        active={field.primaryKey}
+        onToggle={() =>
+          actions.onToggleFieldKey(tableId, field.id, "primaryKey")
+        }
       />
       <KeyToggle
         label="FK"
         fieldLabel={field.text || "blank row"}
-        active={Boolean(field.foreignKey)}
-        onToggle={() => data.onToggleFieldKey(tableId, field.id, "foreignKey")}
+        active={field.foreignKey}
+        onToggle={() =>
+          actions.onToggleFieldKey(tableId, field.id, "foreignKey")
+        }
       />
       <button
         type="button"
@@ -116,7 +112,7 @@ function TableFieldRow({
         onPointerDown={stopPointerPropagation}
         onClick={(event) => {
           event.stopPropagation();
-          data.onRemoveField(tableId, field.id);
+          actions.onRemoveField(tableId, field.id);
         }}
       >
         ×

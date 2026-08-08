@@ -1,17 +1,15 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-ENV_FILES: tuple[Path, ...] | None = (ROOT_DIR / ".env",)
-DEFAULT_CLIENT_ORIGINS = ["http://localhost:5174"]
-DEFAULT_PROVIDER_TIMEOUT_SECONDS = 35.0
+# .env lives at the system_design_interview directory root, two levels above server/app/.
+ENV_FILES: tuple[Path, ...] | None = (Path(__file__).resolve().parents[2] / ".env",)
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+
     keyframe_api_key: str | None = Field(default=None, validation_alias="KEYFRAME_API_KEY")
     keyframe_persona_slug: str = Field(
         default="public:lyra_persona-1.5-live",
@@ -24,13 +22,7 @@ class Settings(BaseSettings):
         validation_alias="ELEVENLABS_API_BASE_URL",
     )
     client_origin: str | None = Field(default=None, validation_alias="CLIENT_ORIGIN")
-    provider_timeout_seconds: float = Field(
-        default=DEFAULT_PROVIDER_TIMEOUT_SECONDS,
-        gt=0,
-        validation_alias="PROVIDER_TIMEOUT_SECONDS",
-    )
-
-    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+    provider_timeout_seconds: float = Field(default=35.0, gt=0, validation_alias="PROVIDER_TIMEOUT_SECONDS")
 
     @field_validator("elevenlabs_api_base_url")
     @classmethod
@@ -39,8 +31,5 @@ class Settings(BaseSettings):
 
     @property
     def client_origins(self) -> list[str]:
-        if not self.client_origin:
-            return DEFAULT_CLIENT_ORIGINS
-
-        origins = [origin.strip() for origin in self.client_origin.split(",") if origin.strip()]
-        return origins or DEFAULT_CLIENT_ORIGINS
+        origins = [origin.strip() for origin in (self.client_origin or "").split(",") if origin.strip()]
+        return origins or ["http://localhost:5174"]

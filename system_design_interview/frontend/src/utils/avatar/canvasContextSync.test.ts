@@ -1,70 +1,118 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createCanvasContextSync,
-  type CanvasSyncStatus
-} from "@/utils/avatar/canvasContextSync";
+import { createCanvasContextSync } from "@/utils/avatar/canvasContextSync";
 
 describe("createCanvasContextSync", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("sends versioned persona contextual update payloads on the buffered cadence", async () => {
-    vi.useFakeTimers();
-    const sendContextUpdate = vi.fn();
-    const sync = createCanvasContextSync({ sendContextUpdate });
+  it("sends the latest snapshot as a versioned contextual update", async () => {
+    const sent: string[] = [];
+    const sync = createCanvasContextSync({
+      sendContextUpdate: (text) => void sent.push(text)
+    });
 
     sync.start();
-    sync.push("Canvas v8\nNodes:\nservice api: API Gateway");
+    sync.push("Canvas v12\nNodes:\nservice api: API");
+    sync.push("Canvas v12\nNodes:\nservice api: API v2");
     await vi.advanceTimersByTimeAsync(1000);
 
-    sync.push("Canvas v8\nNodes:\nservice api: Edge API");
-    await vi.advanceTimersByTimeAsync(1000);
-
-    expect(sendContextUpdate).toHaveBeenCalledTimes(2);
-    expect(sendContextUpdate.mock.calls[0]?.[0]).toContain("CanvasState update: 1");
-    expect(sendContextUpdate.mock.calls[0]?.[0]).toContain("service api: API Gateway");
-    expect(sendContextUpdate.mock.calls[0]?.[0]).toContain("supersedes earlier canvas state contextual updates");
-    expect(sendContextUpdate.mock.calls[1]?.[0]).toContain("CanvasState update: 2");
-    expect(sendContextUpdate.mock.calls[1]?.[0]).toContain("service api: Edge API");
-
-    sync.stop();
+    expect(sent).toEqual([
+      [
+        "Current system design canvas state for the interview:",
+        "CanvasState update: 1",
+        "This is the latest complete canvas snapshot and supersedes earlier canvas state contextual updates.",
+        "Canvas v12\nNodes:\nservice api: API v2",
+        "Use this as background context for the next interview turn. Do not react to the update by itself."
+      ].join("\n")
+    ]);
   });
 
-  it("reports buffered pending, sending, sent, and version status", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
-    const statuses: CanvasSyncStatus[] = [];
-    const sendContextUpdate = vi.fn();
+  it("skips resending unchanged canvases and increments versions on change", async () => {
+    const sent: string[] = [];
     const sync = createCanvasContextSync({
-      sendContextUpdate,
-      onStatusChange: (status) => {
-        statuses.push(status);
+      sendContextUpdate: (text) => void sent.push(text)
+    });
+
+    sync.start();
+    sync.push("state one");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sent).toHaveLength(1);
+
+    sync.push("state one");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sent).toHaveLength(1);
+
+    sync.push("state two");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toContain("CanvasState update: 2");
+    expect(sent[1]).toContain("state two");
+  });
+
+  it("never overlaps sends while one is in flight", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const sync = createCanvasContextSync({
+      sendContextUpdate: async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        inFlight -= 1;
       }
     });
 
     sync.start();
-    sync.push("Canvas A");
-    await vi.advanceTimersByTimeAsync(200);
+    sync.push("first");
+    await vi.advanceTimersByTimeAsync(1000);
+    sync.push("second");
+    await vi.advanceTimersByTimeAsync(5000);
 
-    expect(sync.getStatus()).toMatchObject({
-      isReady: true,
-      pendingEdits: 1,
-      lastSentVersion: 0,
-      error: null
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("keeps a failed update pending, reports the error, and retries", async () => {
+    const sent: string[] = [];
+    let failNext = true;
+    const sync = createCanvasContextSync({
+      sendContextUpdate: (text) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("socket closed");
+        }
+        sent.push(text);
+      }
     });
 
-    await vi.advanceTimersByTimeAsync(800);
+    sync.start();
+    sync.push("state");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sync.getStatus().error).toBe("socket closed");
+    expect(sync.getStatus().hasPendingUpdate).toBe(true);
 
-    expect(sync.getStatus()).toMatchObject({
-      pendingEdits: 0,
-      lastSentAt: 1000,
-      lastSentVersion: 1,
-      error: null
-    });
-    expect(statuses.some((status) => status.isSending)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("CanvasState update: 1");
+    expect(sync.getStatus().error).toBeNull();
+    expect(sync.getStatus().hasPendingUpdate).toBe(false);
+  });
+
+  it("reports readiness while running and stops cleanly", async () => {
+    const sync = createCanvasContextSync({ sendContextUpdate: () => undefined });
+
+    expect(sync.getStatus().isReady).toBe(false);
+    sync.start();
+    expect(sync.getStatus().isReady).toBe(true);
 
     sync.stop();
+    sync.push("after stop");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(sync.getStatus().isReady).toBe(false);
+    expect(sync.getStatus().lastSentAt).toBeNull();
   });
 });

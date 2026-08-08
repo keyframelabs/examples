@@ -11,12 +11,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type {
-  CanvasConnectionCardinality,
-  CanvasElement,
-  CanvasTool
-} from "@/components/canvas/model/types";
-import { isConnection } from "@/components/canvas/model/types";
+import type { CanvasTool, Cardinality } from "@/components/canvas/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -50,7 +45,7 @@ const TOOL_ITEMS: Array<{
 ];
 
 const CARDINALITY_ITEMS: Array<{
-  id: CanvasConnectionCardinality;
+  id: Cardinality;
   label: string;
   shortLabel: string;
 }> = [
@@ -74,9 +69,9 @@ export function CanvasToolbar({
   tool: CanvasTool;
   canUndo: boolean;
   canRedo: boolean;
-  connectionCardinality: CanvasConnectionCardinality;
+  connectionCardinality: Cardinality;
   onToolChange: (tool: CanvasTool) => void;
-  onCardinalityChange: (cardinality: CanvasConnectionCardinality) => void;
+  onCardinalityChange: (cardinality: Cardinality) => void;
   onUndo: () => void;
   onRedo: () => void;
   toolbarEnd?: ReactNode;
@@ -140,7 +135,7 @@ export function CanvasToolbar({
             onValueChange={(nextCardinality) => {
               if (nextCardinality) {
                 onCardinalityChange(
-                  nextCardinality as CanvasConnectionCardinality
+                  nextCardinality as Cardinality
                 );
               }
             }}
@@ -200,17 +195,15 @@ function ToolbarButton({
 
 export function CardinalityMenu({
   menu,
-  connection,
+  cardinality,
   onSelect,
   onClose
 }: {
   menu: CardinalityMenuState;
-  connection: CanvasElement | undefined;
-  onSelect: (cardinality: CanvasConnectionCardinality) => void;
+  cardinality: Cardinality;
+  onSelect: (cardinality: Cardinality) => void;
   onClose: () => void;
 }) {
-  if (!isConnection(connection)) return null;
-
   return (
     <Card
       className="fixed z-40 w-[232px] bg-card/95 p-2 backdrop-blur-sm"
@@ -233,10 +226,10 @@ export function CardinalityMenu({
       </div>
       <ToggleGroup
         type="single"
-        value={connection.cardinality ?? "one-to-one"}
+        value={cardinality}
         onValueChange={(nextCardinality) => {
           if (nextCardinality) {
-            onSelect(nextCardinality as CanvasConnectionCardinality);
+            onSelect(nextCardinality as Cardinality);
           }
         }}
         className="grid grid-cols-2 gap-1"

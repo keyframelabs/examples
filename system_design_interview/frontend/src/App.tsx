@@ -5,6 +5,10 @@ import { InterviewPacketLanding } from "@/components/interview/InterviewPacketLa
 import { createLiveSession, type InterviewPacket } from "@/lib/api";
 import { requestUserCamera } from "@/utils/interview/userCamera";
 
+// The interview chunk is loaded before starting a session so a network
+// failure surfaces as a retryable error here instead of a broken Suspense
+// mount. The cache resets on failure because browsers may cache a rejected
+// dynamic import for the lifetime of the page.
 let interviewSessionModulePromise: Promise<
   typeof import("@/components/interview/InterviewSession")
 > | null = null;

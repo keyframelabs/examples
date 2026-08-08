@@ -6,34 +6,20 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 
-type Position = {
-  x: number;
-  y: number;
-};
+type Position = { x: number; y: number };
+type PanelSize = { width: number; height: number };
+type ViewportSize = { width: number; height: number };
 
-type DragState = {
-  pointerId: number;
-  startClient: Position;
-  startPosition: Position;
-};
-
-type PanelSize = {
-  width: number;
-  height: number;
-};
-
-type ViewportSize = {
-  width: number;
-  height: number;
-};
-
-type ResizeState = {
-  pointerId: number;
-  startClient: Position;
-  startPosition: Position;
-  startSize: PanelSize;
-  aspectRatio: number;
-};
+type Gesture =
+  | { kind: "drag"; pointerId: number; startClient: Position; startPosition: Position }
+  | {
+      kind: "resize";
+      pointerId: number;
+      startClient: Position;
+      startPosition: Position;
+      startSize: PanelSize;
+      aspectRatio: number;
+    };
 
 const DEFAULT_PANEL_WIDTH = 320;
 const DEFAULT_PANEL_HEIGHT = 640;
@@ -42,224 +28,197 @@ const MIN_PANEL_WIDTH = 240;
 const MINIMIZED_HEIGHT = 40;
 const VIEWPORT_MARGIN = 12;
 const INITIAL_HORIZONTAL_INSET = VIEWPORT_MARGIN * 2;
-const CANVAS_TOP_CONTROLS_TOP = 16;
-const CANVAS_TOP_CONTROLS_HEIGHT = 50;
-const CANVAS_TOP_CONTROLS_BOTTOM =
-  CANVAS_TOP_CONTROLS_TOP + CANVAS_TOP_CONTROLS_HEIGHT;
-const CANVAS_TOP_CONTROLS_CLEARANCE =
-  CANVAS_TOP_CONTROLS_BOTTOM + VIEWPORT_MARGIN;
+// Keeps the panel below the canvas toolbar: 16px top + 50px tall + margin.
+const PANEL_TOP_CLEARANCE = 78;
 
 export function useFloatingPanel() {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<DragState | null>(null);
-  const resizeRef = useRef<ResizeState | null>(null);
+  const gestureRef = useRef<Gesture | null>(null);
   const [panelSize, setPanelSize] = useState<PanelSize>(initialPanelSize);
   const [position, setPosition] = useState<Position>(() =>
     initialPosition(panelSize.width, panelSize.height)
   );
   const [minimized, setMinimized] = useState(false);
 
+  const layoutRef = useRef({ panelSize, minimized });
+  layoutRef.current = { panelSize, minimized };
+
+  function reconcilePanelLayout() {
+    const viewport = getViewportSize();
+    if (!viewport) return;
+
+    const { panelSize: currentSize, minimized: isMinimized } =
+      layoutRef.current;
+    const nextSize = fitPanelSizeToViewport(currentSize, viewport);
+    if (
+      nextSize.width !== currentSize.width ||
+      nextSize.height !== currentSize.height
+    ) {
+      setPanelSize(nextSize);
+    }
+
+    setPosition((current) =>
+      clampPosition(
+        current,
+        nextSize.width,
+        isMinimized ? MINIMIZED_HEIGHT : nextSize.height,
+        viewport
+      )
+    );
+  }
+
   useEffect(() => {
     reconcilePanelLayout();
   }, [minimized]);
 
   useEffect(() => {
-    function handleResize() {
-      reconcilePanelLayout();
-    }
-
+    const handleResize = () => reconcilePanelLayout();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [minimized, panelSize]);
+  }, []);
 
-  function handleHeaderPointerDown(
-    event: ReactPointerEvent<HTMLDivElement>
+  function handlePointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+    gesture: Gesture
   ) {
-    if (event.button !== 0) return;
-
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startClient: { x: event.clientX, y: event.clientY },
-      startPosition: position
-    };
+    gestureRef.current = gesture;
   }
 
-  function handleHeaderPointerMove(
-    event: ReactPointerEvent<HTMLDivElement>
-  ) {
-    updateDragPosition(event.pointerId, event.clientX, event.clientY);
-  }
-
-  function handleHeaderPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    endDrag(event.pointerId);
+  function handlePointerUp(event: ReactPointerEvent<HTMLElement>) {
+    if (gestureRef.current?.pointerId === event.pointerId) {
+      gestureRef.current = null;
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }
 
-  function updateDragPosition(
-    pointerId: number,
-    clientX: number,
-    clientY: number
-  ) {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== pointerId) return;
+  function handlePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
 
-    const next = {
-      x: drag.startPosition.x + clientX - drag.startClient.x,
-      y: drag.startPosition.y + clientY - drag.startClient.y
-    };
-    const currentPanelSize = getPanelSize();
-    setPosition(
-      clampPosition(next, currentPanelSize.width, currentPanelSize.height)
-    );
-  }
-
-  function endDrag(pointerId: number) {
-    if (dragRef.current?.pointerId === pointerId) dragRef.current = null;
-  }
-
-  function handleResizePointerDown(
-    event: ReactPointerEvent<HTMLButtonElement>
-  ) {
-    if (minimized || event.button !== 0) return;
-
-    const panel = panelRef.current;
-    if (!panel) return;
-
-    const rect = panel.getBoundingClientRect();
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    resizeRef.current = {
-      pointerId: event.pointerId,
-      startClient: { x: event.clientX, y: event.clientY },
-      startPosition: { x: rect.left, y: rect.top },
-      startSize: { width: rect.width, height: rect.height },
-      aspectRatio: rect.width / rect.height
-    };
-  }
-
-  function handleResizePointerMove(
-    event: ReactPointerEvent<HTMLButtonElement>
-  ) {
-    updatePanelSize(event.pointerId, event.clientX, event.clientY);
-  }
-
-  function handleResizePointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
-    endResize(event.pointerId);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+    if (gesture.kind === "drag") {
+      const next = {
+        x: gesture.startPosition.x + event.clientX - gesture.startClient.x,
+        y: gesture.startPosition.y + event.clientY - gesture.startClient.y
+      };
+      const size = measuredPanelSize();
+      setPosition(clampPosition(next, size.width, size.height));
+      return;
     }
-  }
 
-  function updatePanelSize(
-    pointerId: number,
-    clientX: number,
-    clientY: number
-  ) {
-    const resize = resizeRef.current;
-    if (!resize || resize.pointerId !== pointerId) return;
-
+    // Resize from the bottom-left handle: the panel is anchored at its
+    // top-right corner and scales uniformly along the dominant axis.
     const widthScale =
-      (resize.startSize.width + resize.startClient.x - clientX) /
-      resize.startSize.width;
+      (gesture.startSize.width + gesture.startClient.x - event.clientX) /
+      gesture.startSize.width;
     const heightScale =
-      (resize.startSize.height + clientY - resize.startClient.y) /
-      resize.startSize.height;
+      (gesture.startSize.height + event.clientY - gesture.startClient.y) /
+      gesture.startSize.height;
     const scale =
       Math.abs(widthScale - 1) >= Math.abs(heightScale - 1)
         ? widthScale
         : heightScale;
+    const anchorRight = gesture.startPosition.x + gesture.startSize.width;
 
-    const anchorRight = resize.startPosition.x + resize.startSize.width;
-    const nextSize = getClampedPanelSize(
-      resize.startSize.width * scale,
-      resize.aspectRatio,
+    applyResize(
+      gesture.startSize.width * scale,
+      gesture.aspectRatio,
       anchorRight,
-      resize.startPosition.y
-    );
-    setPanelSize(nextSize);
-    setPosition(
-      clampPosition(
-        {
-          x: anchorRight - nextSize.width,
-          y: resize.startPosition.y
-        },
-        nextSize.width,
-        nextSize.height
-      )
+      gesture.startPosition.y
     );
   }
 
-  function handleResizeKeyDown(
-    event: ReactKeyboardEvent<HTMLButtonElement>
-  ) {
-    const step = event.shiftKey ? 32 : 16;
-    const direction =
-      event.key === "ArrowLeft" || event.key === "ArrowDown"
-        ? 1
-        : event.key === "ArrowRight" || event.key === "ArrowUp"
-          ? -1
-          : 0;
-    if (direction === 0) return;
+  const headerHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      handlePointerDown(event, {
+        kind: "drag",
+        pointerId: event.pointerId,
+        startClient: { x: event.clientX, y: event.clientY },
+        startPosition: position
+      });
+    },
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerUp
+  };
 
-    const rect = panelRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const aspectRatio = rect.width / rect.height;
-    const widthStep =
-      event.key === "ArrowUp" || event.key === "ArrowDown"
-        ? step * aspectRatio
-        : step;
+  const resizeHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (minimized || event.button !== 0) return;
+      const rect = panelRef.current?.getBoundingClientRect();
+      if (!rect) return;
 
-    event.preventDefault();
-    event.stopPropagation();
-    const nextSize = getClampedPanelSize(
-      rect.width + direction * widthStep,
-      aspectRatio,
-      rect.right,
-      rect.top
-    );
-    setPanelSize(nextSize);
-    setPosition(
-      clampPosition(
-        { x: rect.right - nextSize.width, y: rect.top },
-        nextSize.width,
-        nextSize.height
-      )
-    );
-  }
+      event.stopPropagation();
+      handlePointerDown(event, {
+        kind: "resize",
+        pointerId: event.pointerId,
+        startClient: { x: event.clientX, y: event.clientY },
+        startPosition: { x: rect.left, y: rect.top },
+        startSize: { width: rect.width, height: rect.height },
+        aspectRatio: rect.width / rect.height
+      });
+    },
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerUp,
+    onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      const step = event.shiftKey ? 32 : 16;
+      const direction =
+        event.key === "ArrowLeft" || event.key === "ArrowDown"
+          ? 1
+          : event.key === "ArrowRight" || event.key === "ArrowUp"
+            ? -1
+            : 0;
+      if (direction === 0) return;
 
-  function getClampedPanelSize(
+      const rect = panelRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const aspectRatio = rect.width / rect.height;
+      const widthStep =
+        event.key === "ArrowUp" || event.key === "ArrowDown"
+          ? step * aspectRatio
+          : step;
+
+      event.preventDefault();
+      event.stopPropagation();
+      applyResize(
+        rect.width + direction * widthStep,
+        aspectRatio,
+        rect.right,
+        rect.top
+      );
+    }
+  };
+
+  function applyResize(
     targetWidth: number,
     aspectRatio: number,
     anchorRight: number,
     top: number
-  ): PanelSize {
+  ) {
     const maxWidth = Math.min(
       MAX_PANEL_WIDTH,
       Math.max(1, anchorRight - VIEWPORT_MARGIN),
       Math.max(1, window.innerHeight - top - VIEWPORT_MARGIN) * aspectRatio
     );
-    const width = clamp(
-      targetWidth,
-      Math.min(MIN_PANEL_WIDTH, maxWidth),
-      maxWidth
+    const width = clamp(targetWidth, Math.min(MIN_PANEL_WIDTH, maxWidth), maxWidth);
+    const nextSize = { width, height: width / aspectRatio };
+
+    setPanelSize(nextSize);
+    setPosition(
+      clampPosition(
+        { x: anchorRight - nextSize.width, y: top },
+        nextSize.width,
+        nextSize.height
+      )
     );
-
-    return {
-      width,
-      height: width / aspectRatio
-    };
   }
 
-  function endResize(pointerId: number) {
-    if (resizeRef.current?.pointerId === pointerId) resizeRef.current = null;
-  }
-
-  function getPanelSize(): PanelSize {
+  function measuredPanelSize(): PanelSize {
     const rect = panelRef.current?.getBoundingClientRect();
     if (rect?.width && rect?.height) {
       return { width: rect.width, height: rect.height };
@@ -270,55 +229,23 @@ export function useFloatingPanel() {
       : panelSize;
   }
 
-  function reconcilePanelLayout() {
-    const viewport = getViewportSize();
-    if (!viewport) return;
-
-    const nextPanelSize = fitPanelSizeToViewport(panelSize, viewport);
-    if (
-      nextPanelSize.width !== panelSize.width ||
-      nextPanelSize.height !== panelSize.height
-    ) {
-      setPanelSize(nextPanelSize);
-    }
-
-    setPosition((current) =>
-      clampPosition(
-        current,
-        nextPanelSize.width,
-        minimized ? MINIMIZED_HEIGHT : nextPanelSize.height,
-        viewport
-      )
-    );
-  }
-
   return {
     panelRef,
     panelSize,
     position,
     minimized,
     setMinimized,
-    handleHeaderPointerDown,
-    handleHeaderPointerMove,
-    handleHeaderPointerUp,
-    handleResizePointerDown,
-    handleResizePointerMove,
-    handleResizePointerUp,
-    handleResizeKeyDown
+    headerHandlers,
+    resizeHandlers
   };
 }
 
 export function initialPanelSize(viewport = getViewportSize()): PanelSize {
-  const preferredSize = {
+  const preferred = {
     width: DEFAULT_PANEL_WIDTH,
     height: DEFAULT_PANEL_HEIGHT
   };
-
-  if (!viewport) {
-    return preferredSize;
-  }
-
-  return fitPanelSizeToViewport(preferredSize, viewport);
+  return viewport ? fitPanelSizeToViewport(preferred, viewport) : preferred;
 }
 
 export function fitPanelSizeToViewport(
@@ -329,17 +256,10 @@ export function fitPanelSizeToViewport(
   const maxWidth = Math.min(
     MAX_PANEL_WIDTH,
     Math.max(1, viewport.width - INITIAL_HORIZONTAL_INSET),
-    Math.max(
-      1,
-      viewport.height - CANVAS_TOP_CONTROLS_CLEARANCE - VIEWPORT_MARGIN
-    ) *
+    Math.max(1, viewport.height - PANEL_TOP_CLEARANCE - VIEWPORT_MARGIN) *
       aspectRatio
   );
-  const width = clamp(
-    size.width,
-    Math.min(MIN_PANEL_WIDTH, maxWidth),
-    maxWidth
-  );
+  const width = clamp(size.width, Math.min(MIN_PANEL_WIDTH, maxWidth), maxWidth);
 
   return { width, height: width / aspectRatio };
 }
@@ -350,16 +270,13 @@ export function initialPosition(
   viewport = getViewportSize()
 ): Position {
   if (!viewport) {
-    return {
-      x: INITIAL_HORIZONTAL_INSET,
-      y: CANVAS_TOP_CONTROLS_CLEARANCE
-    };
+    return { x: INITIAL_HORIZONTAL_INSET, y: PANEL_TOP_CLEARANCE };
   }
 
   return clampPosition(
     {
       x: viewport.width - width - INITIAL_HORIZONTAL_INSET,
-      y: CANVAS_TOP_CONTROLS_CLEARANCE
+      y: PANEL_TOP_CLEARANCE
     },
     width,
     height,
@@ -379,15 +296,14 @@ export function clampPosition(
     VIEWPORT_MARGIN,
     viewport.width - width - VIEWPORT_MARGIN
   );
-  const minY = CANVAS_TOP_CONTROLS_CLEARANCE;
   const maxY = Math.max(
-    minY,
+    PANEL_TOP_CLEARANCE,
     viewport.height - height - VIEWPORT_MARGIN
   );
 
   return {
     x: clamp(position.x, VIEWPORT_MARGIN, maxX),
-    y: clamp(position.y, minY, maxY)
+    y: clamp(position.y, PANEL_TOP_CLEARANCE, maxY)
   };
 }
 

@@ -1,14 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import type { CanvasSyncStatus } from "@/utils/avatar/canvasContextSync";
 
-type CanvasSyncIndicatorProps = {
-  status: CanvasSyncStatus;
-};
-
-export function CanvasSyncIndicator({ status }: CanvasSyncIndicatorProps) {
-  if (!status.isReady) {
-    return null;
-  }
+export function CanvasSyncIndicator({ status }: { status: CanvasSyncStatus }) {
+  const label = status.error
+    ? "Canvas send issue"
+    : status.lastSentAt !== null && !status.isSending && !status.hasPendingUpdate
+      ? "Synced"
+      : "Syncing";
 
   return (
     <Badge
@@ -21,23 +19,7 @@ export function CanvasSyncIndicator({ status }: CanvasSyncIndicatorProps) {
           : "pointer-events-none h-10 rounded-md border-transparent bg-transparent px-3 text-muted-foreground shadow-none"
       }
     >
-      {getCanvasSyncPrimaryText(status)}
+      {label}
     </Badge>
   );
-}
-
-export function getCanvasSyncPrimaryText(status: CanvasSyncStatus): string {
-  if (status.error) {
-    return "Canvas send issue";
-  }
-
-  if (
-    status.lastSentAt !== null &&
-    !status.isSending &&
-    status.pendingEdits === 0
-  ) {
-    return "Synced";
-  }
-
-  return "Syncing";
 }

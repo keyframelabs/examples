@@ -6,24 +6,15 @@ import {
   type ConnectionLineComponentProps,
   type EdgeProps
 } from "@xyflow/react";
-import {
-  memo,
-  type CSSProperties,
-  type FocusEvent,
-  type MouseEvent,
-  type PointerEvent
-} from "react";
+import { memo, type CSSProperties, type SyntheticEvent } from "react";
 
 import {
-  cardinalityTerminals,
-  type SystemFlowEdge,
-  type SystemFlowNode
-} from "@/components/canvas/flow/adapters";
-import {
-  connectionLabelDimensions,
-  connectionRoutingOffset
-} from "@/components/canvas/flow/connectionLabels";
+  EDGE_ROUTING_OFFSET,
+  connectionLabelSize
+} from "@/components/canvas/collisions";
+import { useCanvasActions } from "@/components/canvas/flow/CanvasActionsContext";
 import { handleTextEditorKeyDown } from "@/components/canvas/flow/textEditing";
+import type { CanvasEdge, CanvasNode, Cardinality } from "@/components/canvas/types";
 
 type Point = { x: number; y: number };
 type Multiplicity = "one" | "many";
@@ -32,11 +23,11 @@ const MARKER_GAP = 6;
 const MARKER_HEIGHT = 16;
 const CROW_LENGTH = 16;
 const CROW_SPREAD = 8;
-const EDGE_LABEL_Z_INDEX = 1001;
 const EDGE_STROKE_WIDTH = 3;
 const SELECTED_EDGE_STROKE_WIDTH = 4;
 
 function SystemDesignEdgeComponent({
+  id,
   sourceX,
   sourceY,
   targetX,
@@ -48,7 +39,8 @@ function SystemDesignEdgeComponent({
   data,
   style,
   interactionWidth
-}: EdgeProps<SystemFlowEdge>) {
+}: EdgeProps<CanvasEdge>) {
+  const actions = useCanvasActions();
   if (!data) return null;
 
   const stroke = selected
@@ -57,11 +49,7 @@ function SystemDesignEdgeComponent({
   const strokeWidth = selected
     ? SELECTED_EDGE_STROKE_WIDTH
     : EDGE_STROKE_WIDTH;
-  const [fromTerminal, toTerminal] = cardinalityTerminals(
-    data.connection.cardinality
-  );
-  const labelDimensions = connectionLabelDimensions(data.connection);
-  const largeLabel = data.connection.labelSize === "large";
+  const [fromTerminal, toTerminal] = cardinalityTerminals(data.cardinality);
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
   const pathSource = data.isTableRelationship
@@ -78,8 +66,9 @@ function SystemDesignEdgeComponent({
     targetY: pathTarget.y,
     targetPosition,
     borderRadius: 12,
-    offset: connectionRoutingOffset(data.connection)
+    offset: EDGE_ROUTING_OFFSET
   });
+  const labelSize = connectionLabelSize(data.label);
 
   return (
     <>
@@ -113,67 +102,72 @@ function SystemDesignEdgeComponent({
             strokeWidth={strokeWidth}
           />
         </>
-      ) : null}
-
-      {!data.isTableRelationship ? (
+      ) : (
         <EdgeLabelRenderer>
           <div
-            data-connection-label-id={data.connection.id}
+            data-connection-label-id={id}
             className="nodrag nopan pointer-events-auto absolute"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              zIndex: EDGE_LABEL_Z_INDEX + (selected ? 1 : 0)
+              zIndex: 1001 + (selected ? 1 : 0)
             }}
           >
             <input
               aria-label="Connection label"
-              className={`nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center font-medium leading-none text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20 ${largeLabel ? "text-lg" : "text-sm"}`}
+              className="nodrag nopan block rounded-sm border border-border bg-card px-2 py-1 text-center text-lg font-medium leading-none text-foreground outline-none transition-[width,border-color,box-shadow] placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
               style={{
-                width: labelDimensions.width,
-                height: labelDimensions.height,
+                width: labelSize.width,
+                height: labelSize.height,
                 boxShadow:
                   "0 0 0 3px var(--canvas-paper), 0 2px 5px rgb(0 0 0 / 0.14)"
               }}
-              value={data.connection.label}
+              value={data.label}
               placeholder="Flow label"
               onChange={(event) =>
-                data.onLabelChange(
-                  data.connection.id,
-                  event.currentTarget.value
-                )
+                actions.onEdgeLabelChange(id, event.currentTarget.value)
               }
               onFocus={(event) => {
-                stopFocusPropagation(event);
-                data.onEditStart();
+                stopPropagation(event);
+                actions.onEditStart();
               }}
               onBlur={(event) => {
-                stopFocusPropagation(event);
-                data.onEditEnd();
+                stopPropagation(event);
+                actions.onEditEnd();
               }}
-              onPointerDown={stopPointerPropagation}
-              onClick={stopMousePropagation}
-              onDoubleClick={stopMousePropagation}
+              onPointerDown={stopPropagation}
+              onClick={stopPropagation}
+              onDoubleClick={stopPropagation}
               onKeyDown={(event) =>
-                handleTextEditorKeyDown(event, data.onEditComplete)
+                handleTextEditorKeyDown(event, actions.onEditComplete)
               }
             />
           </div>
         </EdgeLabelRenderer>
-      ) : null}
+      )}
     </>
   );
 }
 
-function stopFocusPropagation(event: FocusEvent<HTMLInputElement>) {
+export const SystemDesignEdge = memo(SystemDesignEdgeComponent);
+
+function stopPropagation(event: SyntheticEvent) {
   event.stopPropagation();
 }
 
-function stopPointerPropagation(event: PointerEvent<HTMLInputElement>) {
-  event.stopPropagation();
-}
-
-function stopMousePropagation(event: MouseEvent<HTMLInputElement>) {
-  event.stopPropagation();
+function cardinalityTerminals(
+  cardinality: Cardinality
+): [Multiplicity, Multiplicity] {
+  switch (cardinality) {
+    case "one-to-many":
+      return ["one", "many"];
+    case "many-to-one":
+      return ["many", "one"];
+    case "many-to-many":
+      return ["many", "many"];
+    case "one-to-one":
+    default:
+      return ["one", "one"];
+  }
 }
 
 function RelationshipMarker({
@@ -210,10 +204,7 @@ function RelationshipMarker({
     );
   }
 
-  const joint = add(
-    point,
-    scale(direction, MARKER_GAP + CROW_LENGTH)
-  );
+  const joint = add(point, scale(direction, MARKER_GAP + CROW_LENGTH));
   const spreadStart = add(toe, scale(normal, CROW_SPREAD));
   const spreadEnd = add(toe, scale(normal, -CROW_SPREAD));
 
@@ -227,18 +218,8 @@ function RelationshipMarker({
       pointerEvents="none"
     >
       <line x1={joint.x} y1={joint.y} x2={toe.x} y2={toe.y} />
-      <line
-        x1={joint.x}
-        y1={joint.y}
-        x2={spreadStart.x}
-        y2={spreadStart.y}
-      />
-      <line
-        x1={joint.x}
-        y1={joint.y}
-        x2={spreadEnd.x}
-        y2={spreadEnd.y}
-      />
+      <line x1={joint.x} y1={joint.y} x2={spreadStart.x} y2={spreadStart.y} />
+      <line x1={joint.x} y1={joint.y} x2={spreadEnd.x} y2={spreadEnd.y} />
     </g>
   );
 }
@@ -252,7 +233,7 @@ export const SystemDesignConnectionLine = memo(
     fromPosition,
     toPosition,
     connectionStatus
-  }: ConnectionLineComponentProps<SystemFlowNode>) {
+  }: ConnectionLineComponentProps<CanvasNode>) {
     const [path] = getSmoothStepPath({
       sourceX: fromX,
       sourceY: fromY,
@@ -261,7 +242,7 @@ export const SystemDesignConnectionLine = memo(
       targetY: toY,
       targetPosition: toPosition,
       borderRadius: 12,
-      offset: 32
+      offset: EDGE_ROUTING_OFFSET
     });
     const style: CSSProperties = {
       fill: "none",
@@ -284,8 +265,7 @@ function offsetForTerminal(
   position: Position,
   terminal: Multiplicity
 ) {
-  const distance =
-    terminal === "many" ? MARKER_GAP + CROW_LENGTH : MARKER_GAP;
+  const distance = terminal === "many" ? MARKER_GAP + CROW_LENGTH : MARKER_GAP;
   return add(point, scale(positionVector(position), distance));
 }
 
@@ -310,30 +290,3 @@ function add(first: Point, second: Point): Point {
 function scale(point: Point, amount: number): Point {
   return { x: point.x * amount, y: point.y * amount };
 }
-
-function areEdgePropsEqual(
-  previous: EdgeProps<SystemFlowEdge>,
-  next: EdgeProps<SystemFlowEdge>
-): boolean {
-  return (
-    previous.sourceX === next.sourceX &&
-    previous.sourceY === next.sourceY &&
-    previous.targetX === next.targetX &&
-    previous.targetY === next.targetY &&
-    previous.sourcePosition === next.sourcePosition &&
-    previous.targetPosition === next.targetPosition &&
-    previous.selected === next.selected &&
-    previous.markerEnd === next.markerEnd &&
-    previous.data?.connection === next.data?.connection &&
-    previous.data?.isTableRelationship === next.data?.isTableRelationship &&
-    previous.data?.onEditStart === next.data?.onEditStart &&
-    previous.data?.onEditEnd === next.data?.onEditEnd &&
-    previous.data?.onEditComplete === next.data?.onEditComplete &&
-    previous.data?.onLabelChange === next.data?.onLabelChange
-  );
-}
-
-export const SystemDesignEdge = memo(
-  SystemDesignEdgeComponent,
-  areEdgePropsEqual
-);
