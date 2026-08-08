@@ -1,4 +1,4 @@
-import type { CanvasField } from "@/components/canvas/model/types";
+import type { CanvasField } from "@/components/canvas/types";
 
 export const TABLE_FIELD_TOP = 48;
 export const TABLE_FIELD_HEIGHT = 25;

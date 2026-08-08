@@ -11,7 +11,12 @@ import {
   Phone,
   PhoneOff
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  type ReactNode
+} from "react";
 
 import personSharpUrl from "@/assets/person-sharp.svg";
 import { useFloatingPanel } from "@/components/avatar/useFloatingPanel";
@@ -21,13 +26,11 @@ import {
 } from "@/components/avatar/useInterviewMediaSession";
 import {
   measureCanvasRightOcclusion,
-  subscribeToViewportResize,
   type CanvasRightOcclusion
 } from "@/components/canvas/fitView";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InterviewPacket } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -39,8 +42,8 @@ type FloatingAvatarWindowProps = {
   packet: InterviewPacket;
   startup: InterviewStartup;
   onReturnToSelection: () => void;
-  onCanvasSyncStatusChange?: (status: CanvasSyncStatus) => void;
-  onCanvasRightOcclusionChange?: (
+  onCanvasSyncStatusChange: (status: CanvasSyncStatus) => void;
+  onCanvasRightOcclusionChange: (
     occlusion: CanvasRightOcclusion | null
   ) => void;
 };
@@ -59,25 +62,18 @@ export function FloatingAvatarWindow({
     position,
     minimized,
     setMinimized,
-    handleHeaderPointerDown,
-    handleHeaderPointerMove,
-    handleHeaderPointerUp,
-    handleResizePointerDown,
-    handleResizePointerMove,
-    handleResizePointerUp,
-    handleResizeKeyDown
+    headerHandlers,
+    resizeHandlers
   } = useFloatingPanel();
   const {
     personaContainerRef,
     userVideoRef,
-    isConnecting,
-    isConnected,
+    avatarStatus,
     isEndingCall,
     avatarError,
-    cameraError,
     cameraStatus,
+    cameraError,
     interviewTimeRemainingMs,
-    events,
     canvasSyncStatus,
     toggleCamera,
     toggleAvatar
@@ -94,10 +90,11 @@ export function FloatingAvatarWindow({
     : isCameraOn
       ? "Turn off camera"
       : "Turn on camera";
-  const isAvatarChanging = isConnecting || isEndingCall;
+  const isConnected = avatarStatus === "connected";
+  const isAvatarChanging = avatarStatus === "connecting" || isEndingCall;
   const avatarToggleLabel = isEndingCall
     ? "Turning off avatar"
-    : isConnecting
+    : avatarStatus === "connecting"
       ? "Turning on avatar"
       : isConnected
         ? "Turn off avatar"
@@ -105,15 +102,16 @@ export function FloatingAvatarWindow({
   const interviewTime = formatInterviewTime(interviewTimeRemainingMs);
 
   useEffect(() => {
-    onCanvasSyncStatusChange?.(canvasSyncStatus);
+    onCanvasSyncStatusChange(canvasSyncStatus);
   }, [canvasSyncStatus, onCanvasSyncStatusChange]);
 
   const reportCanvasRightOcclusion = useCallback(() => {
     const rect = panelRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    const occlusion = measureCanvasRightOcclusion(rect, window.innerWidth);
-    onCanvasRightOcclusionChange?.(occlusion);
+    onCanvasRightOcclusionChange(
+      measureCanvasRightOcclusion(rect, window.innerWidth)
+    );
   }, [onCanvasRightOcclusionChange, panelRef]);
 
   useLayoutEffect(() => {
@@ -127,10 +125,11 @@ export function FloatingAvatarWindow({
     reportCanvasRightOcclusion
   ]);
 
-  useEffect(
-    () => subscribeToViewportResize(window, reportCanvasRightOcclusion),
-    [reportCanvasRightOcclusion]
-  );
+  useEffect(() => {
+    window.addEventListener("resize", reportCanvasRightOcclusion);
+    return () =>
+      window.removeEventListener("resize", reportCanvasRightOcclusion);
+  }, [reportCanvasRightOcclusion]);
 
   return (
     <>
@@ -172,10 +171,7 @@ export function FloatingAvatarWindow({
         >
           <div
             className="flex h-9 cursor-move touch-none items-center border-b border-border bg-card px-2"
-            onPointerDown={handleHeaderPointerDown}
-            onPointerMove={handleHeaderPointerMove}
-            onPointerUp={handleHeaderPointerUp}
-            onPointerCancel={handleHeaderPointerUp}
+            {...headerHandlers}
           >
             <GripHorizontal className="size-4 text-muted-foreground" />
             <div className="flex-1 text-center">
@@ -194,9 +190,7 @@ export function FloatingAvatarWindow({
                   size="icon-sm"
                   className="shrink-0"
                   aria-label={
-                    minimized
-                      ? "Restore video window"
-                      : "Minimize video window"
+                    minimized ? "Restore video window" : "Minimize video window"
                   }
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => setMinimized((current) => !current)}
@@ -216,8 +210,7 @@ export function FloatingAvatarWindow({
 
           <div
             className={cn(
-              !minimized &&
-                "flex min-h-0 flex-1 flex-col overflow-hidden"
+              !minimized && "flex min-h-0 flex-1 flex-col overflow-hidden"
             )}
           >
             <div
@@ -226,115 +219,83 @@ export function FloatingAvatarWindow({
                 minimized && "hidden"
               )}
             >
-              <section
-                className="order-2 aspect-square h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl border bg-muted/40"
-                aria-label="Your camera preview"
+              <MediaTile
+                className="order-2"
+                sectionLabel="Your camera preview"
+                name="You"
+                toggleLabel={cameraToggleLabel}
+                togglePressed={isCameraOn}
+                toggleDisabled={isCameraChanging}
+                toggleBusy={isCameraChanging}
+                toggleIcon={
+                  isCameraOn ? (
+                    <CameraOff className="size-4" />
+                  ) : (
+                    <Camera className="size-4" />
+                  )
+                }
+                onToggle={toggleCamera}
               >
-                <div className="relative h-full w-full overflow-hidden bg-foreground">
-                  <video
-                    ref={userVideoRef}
-                    className={cn(
-                      "h-full w-full scale-x-[-1] object-cover",
-                      cameraStatus !== "ready" && "invisible"
-                    )}
-                    autoPlay
-                    muted
-                    playsInline
-                    aria-label="Your live camera preview"
-                  />
-                  {cameraStatus !== "ready" ? (
-                    <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
-                      <PersonPlaceholder />
-                      <div
-                        className="relative z-10 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground shadow-lg"
-                        role="status"
-                      >
-                        {cameraStatus === "requesting" ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : null}
-                        {cameraStatus === "requesting"
-                          ? "Waiting for camera permission"
-                          : cameraStatus === "unavailable"
-                            ? "Camera unavailable"
-                            : cameraStatus === "off"
-                              ? "Camera off"
-                              : "Preparing camera"}
-                      </div>
+                <video
+                  ref={userVideoRef}
+                  className={cn(
+                    "h-full w-full scale-x-[-1] object-cover",
+                    !isCameraOn && "invisible"
+                  )}
+                  autoPlay
+                  muted
+                  playsInline
+                  aria-label="Your live camera preview"
+                />
+                {!isCameraOn ? (
+                  <div className="absolute inset-0 grid place-items-center overflow-hidden bg-canvas-avatar-surface">
+                    <PersonPlaceholder />
+                    <div
+                      className="relative z-10 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs font-medium text-secondary-foreground shadow-lg"
+                      role="status"
+                    >
+                      {isCameraChanging ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : null}
+                      {isCameraChanging
+                        ? "Waiting for camera permission"
+                        : cameraStatus === "unavailable"
+                          ? "Camera unavailable"
+                          : cameraStatus === "off"
+                            ? "Camera off"
+                            : "Preparing camera"}
                     </div>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="icon-sm"
-                        className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
-                        aria-label={cameraToggleLabel}
-                        aria-pressed={isCameraOn}
-                        disabled={isCameraChanging}
-                        onClick={toggleCamera}
-                      >
-                        {isCameraChanging ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : isCameraOn ? (
-                          <CameraOff className="size-4" />
-                        ) : (
-                          <Camera className="size-4" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">
-                      {cameraToggleLabel}
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="absolute bottom-2 left-8 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm">
-                    You
                   </div>
-                </div>
-              </section>
+                ) : null}
+              </MediaTile>
 
-              <section
-                className="order-1 aspect-square h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl border bg-muted/40"
-                aria-label="Avatar video"
+              <MediaTile
+                className="order-1"
+                sectionLabel="Avatar video"
+                name="Avatar"
+                toggleLabel={avatarToggleLabel}
+                togglePressed={isConnected}
+                toggleDisabled={isAvatarChanging}
+                toggleBusy={isAvatarChanging}
+                toggleIcon={
+                  isConnected ? (
+                    <PhoneOff className="size-4" />
+                  ) : (
+                    <Phone className="size-4" />
+                  )
+                }
+                onToggle={toggleAvatar}
               >
-                <div className="relative h-full w-full overflow-hidden bg-canvas-avatar-surface">
-                  <div
-                    ref={personaContainerRef}
-                    className="h-full w-full overflow-hidden [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
-                  />
-                  {!isConnected ? (
-                    <div className="absolute inset-0 overflow-hidden bg-canvas-avatar-surface">
-                      <PersonPlaceholder />
-                    </div>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="icon-sm"
-                        className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
-                        aria-label={avatarToggleLabel}
-                        aria-pressed={isConnected}
-                        disabled={isAvatarChanging}
-                        onClick={toggleAvatar}
-                      >
-                        {isAvatarChanging ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : isConnected ? (
-                          <PhoneOff className="size-4" />
-                        ) : (
-                          <Phone className="size-4" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">
-                      {avatarToggleLabel}
-                    </TooltipContent>
-                  </Tooltip>
-                  <div className="absolute bottom-2 left-8 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm">
-                    Avatar
+                <div
+                  ref={personaContainerRef}
+                  className="h-full w-full overflow-hidden [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
+                />
+                {!isConnected ? (
+                  <div className="absolute inset-0 overflow-hidden bg-canvas-avatar-surface">
+                    <PersonPlaceholder />
                   </div>
-                </div>
-              </section>
+                ) : null}
+              </MediaTile>
             </div>
 
             {(avatarError || cameraError) && !minimized ? (
@@ -353,18 +314,6 @@ export function FloatingAvatarWindow({
                 ) : null}
               </div>
             ) : null}
-
-            {shouldShowConnectionLog() && events.length > 0 && !minimized ? (
-              <div className="border-t border-border p-3 sm:px-6">
-                <ScrollArea className="h-28 rounded-md border bg-muted text-xs text-muted-foreground">
-                  <div className="p-2">
-                    {events.map((event) => (
-                      <div key={event}>{event}</div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            ) : null}
           </div>
 
           {!minimized ? (
@@ -373,11 +322,7 @@ export function FloatingAvatarWindow({
               size="icon-sm"
               className="pointer-events-none absolute bottom-0 left-0 z-30 size-6 touch-none cursor-nesw-resize rounded-none rounded-tr-md bg-card/85 p-0 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
               aria-label="Resize video window"
-              onPointerDown={handleResizePointerDown}
-              onPointerMove={handleResizePointerMove}
-              onPointerUp={handleResizePointerUp}
-              onPointerCancel={handleResizePointerUp}
-              onKeyDown={handleResizeKeyDown}
+              {...resizeHandlers}
             >
               <MoveDiagonal className="size-3" />
             </Button>
@@ -385,6 +330,67 @@ export function FloatingAvatarWindow({
         </Card>
       </div>
     </>
+  );
+}
+
+function MediaTile({
+  className,
+  sectionLabel,
+  name,
+  toggleLabel,
+  togglePressed,
+  toggleDisabled,
+  toggleBusy,
+  toggleIcon,
+  onToggle,
+  children
+}: {
+  className?: string;
+  sectionLabel: string;
+  name: string;
+  toggleLabel: string;
+  togglePressed: boolean;
+  toggleDisabled: boolean;
+  toggleBusy: boolean;
+  toggleIcon: ReactNode;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "aspect-square h-full max-h-full w-auto max-w-full overflow-hidden rounded-xl border bg-muted/40",
+        className
+      )}
+      aria-label={sectionLabel}
+    >
+      <div className="relative h-full w-full overflow-hidden bg-canvas-avatar-surface">
+        {children}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              className="absolute right-2 top-2 z-10 bg-black/65 text-white hover:bg-black/80 hover:text-white"
+              aria-label={toggleLabel}
+              aria-pressed={togglePressed}
+              disabled={toggleDisabled}
+              onClick={onToggle}
+            >
+              {toggleBusy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                toggleIcon
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">{toggleLabel}</TooltipContent>
+        </Tooltip>
+        <div className="absolute bottom-2 left-8 z-10 rounded-md bg-black/65 px-2 py-1 text-[11px] font-medium text-white shadow-sm backdrop-blur-sm">
+          {name}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -407,9 +413,4 @@ function PersonPlaceholder() {
       }}
     />
   );
-}
-
-function shouldShowConnectionLog(): boolean {
-  const params = new URLSearchParams(window.location.search);
-  return params.has("cli") || window.location.hash.toLowerCase().includes("cli");
 }

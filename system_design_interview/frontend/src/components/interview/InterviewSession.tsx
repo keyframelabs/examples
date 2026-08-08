@@ -7,20 +7,13 @@ import type { InterviewStartup } from "@/components/avatar/useInterviewMediaSess
 import "@/components/canvas/canvas.css";
 import { SystemDesignCanvas } from "@/components/canvas/SystemDesignCanvas";
 import type { CanvasRightOcclusion } from "@/components/canvas/fitView";
-import { createEmptyCanvasState } from "@/components/canvas/model/state";
-import { serializeCanvasToText } from "@/components/canvas/serializer/serializeCanvas";
+import { EMPTY_CANVAS_TEXT } from "@/components/canvas/serialize";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { InterviewPacket } from "@/lib/api";
 import {
   INITIAL_CANVAS_SYNC_STATUS,
   type CanvasSyncStatus
 } from "@/utils/avatar/canvasContextSync";
-import {
-  registerSessionLossWarning,
-  shouldWarnAboutSessionLoss
-} from "@/utils/sessionLossWarning";
-
-const EMPTY_CANVAS_TEXT = serializeCanvasToText(createEmptyCanvasState()).text;
 
 type InterviewSessionProps = {
   packet: InterviewPacket;
@@ -39,14 +32,18 @@ export default function InterviewSession({
     useState<CanvasSyncStatus>(INITIAL_CANVAS_SYNC_STATUS);
   const [canvasRightOcclusion, setCanvasRightOcclusion] =
     useState<CanvasRightOcclusion | null>(null);
-  const shouldWarnBeforeUnload = shouldWarnAboutSessionLoss({
-    hasCanvasEdits,
-    isSessionActive: canvasSyncStatus.isReady
-  });
+  // Warn before losing an active session or unsaved canvas work.
+  const shouldWarnBeforeUnload = hasCanvasEdits || canvasSyncStatus.isReady;
 
   useEffect(() => {
     if (!shouldWarnBeforeUnload) return;
-    return registerSessionLossWarning(window);
+
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = true;
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, [shouldWarnBeforeUnload]);
 
   return (

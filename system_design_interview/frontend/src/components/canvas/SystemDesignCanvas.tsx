@@ -4,16 +4,19 @@ import {
   ConnectionMode,
   ControlButton,
   Controls,
+  MarkerType,
   ReactFlow,
+  applyEdgeChanges,
+  applyNodeChanges,
   type Connection,
   type EdgeChange,
+  type FitViewOptions,
   type NodeChange,
   type OnConnect,
   type OnEdgesChange,
   type OnNodeDrag,
   type OnNodesChange,
   type OnReconnect,
-  type FitViewOptions,
   type ReactFlowInstance
 } from "@xyflow/react";
 import {
@@ -32,55 +35,39 @@ import {
   CardinalityMenu,
   type CardinalityMenuState
 } from "@/components/canvas/CanvasControls";
-import {
-  geometryChanges,
-  isSameFlowEndpoint,
-  isTableRelationship
-} from "@/components/canvas/canvasFlowHelpers";
-import {
-  canvasStateToFlowElements,
-  flowConnectionToEndpoints,
-  type FlowNodeGeometry,
-  type SystemFlowEdge,
-  type SystemFlowNode
-} from "@/components/canvas/flow/adapters";
-import {
-  flowSelectionChanges,
-  type CanvasSelectionChange
-} from "@/components/canvas/flow/selection";
+import { resolveCollisions } from "@/components/canvas/collisions";
 import {
   createCanvasFitViewOptions,
   fitCanvasToLeft,
-  runInitialCanvasFit,
   type CanvasRightOcclusion
 } from "@/components/canvas/fitView";
+import {
+  CanvasActionsContext,
+  type CanvasActions
+} from "@/components/canvas/flow/CanvasActionsContext";
 import {
   SystemDesignConnectionLine,
   SystemDesignEdge
 } from "@/components/canvas/flow/SystemDesignEdge";
 import { SystemDesignNode } from "@/components/canvas/flow/SystemDesignNode";
-import { useCanvasHistory } from "@/components/canvas/hooks/useCanvasHistory";
+import { useCanvasHistory } from "@/components/canvas/history";
+import { serializeCanvasToText } from "@/components/canvas/serialize";
+import { tableHeightForFields } from "@/components/canvas/tableLayout";
 import {
-  createConnection,
+  createEdge,
   createField,
-  createNode
-} from "@/components/canvas/model/state";
-import {
-  isConnection,
-  isNode,
-  type CanvasConnectionCardinality,
-  type CanvasState,
-  type CanvasTextMetadata,
-  type CanvasTool
-} from "@/components/canvas/model/types";
-import {
-  scheduleCanvasTextSerialization,
-  serializeCanvasToText
-} from "@/components/canvas/serializer/serializeCanvas";
+  createNode,
+  isTableNode,
+  type CanvasEdge,
+  type CanvasNode,
+  type CanvasSnapshot
+} from "@/components/canvas/types";
+import { parseHandleId } from "@/components/canvas/flow/handles";
+import type { CanvasTool, Cardinality } from "@/components/canvas/types";
 
 type SystemDesignCanvasProps = {
   onCanvasDirtyChange?: (isDirty: boolean) => void;
-  onCanvasTextChange?: (text: string, metadata: CanvasTextMetadata) => void;
+  onCanvasTextChange?: (text: string) => void;
   rightOcclusion?: CanvasRightOcclusion | null;
   toolbarEnd?: ReactNode;
 };
@@ -96,10 +83,10 @@ export function SystemDesignCanvas({
   toolbarEnd
 }: SystemDesignCanvasProps) {
   const {
-    state,
-    apply,
-    applyEphemeral,
-    commitSnapshot,
+    snapshot,
+    update,
+    updateEphemeral,
+    commitFrom,
     markDirty,
     undo,
     redo,
@@ -109,267 +96,176 @@ export function SystemDesignCanvas({
   } = useCanvasHistory();
   const [tool, setTool] = useState<CanvasTool>("select");
   const [connectionCardinality, setConnectionCardinality] =
-    useState<CanvasConnectionCardinality>("one-to-one");
+    useState<Cardinality>("one-to-one");
   const [autoFocusNodeId, setAutoFocusNodeId] = useState<string | null>(null);
   const [cardinalityMenu, setCardinalityMenu] =
     useState<CardinalityMenuState | null>(null);
-  const [flowInstance, setFlowInstance] =
-    useState<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
-  const flowInstanceRef =
-    useRef<ReactFlowInstance<SystemFlowNode, SystemFlowEdge> | null>(null);
-  const interactionSnapshotRef = useRef<CanvasState | null>(null);
-  const pendingSelectionChangesRef = useRef(new Map<string, boolean>());
-  const selectionFlushQueuedRef = useRef(false);
-  const mountedRef = useRef(true);
-  const stateRef = useRef(state);
-  const pendingCanvasTextFlushRef = useRef<(() => void) | null>(null);
-  const latestCanvasTextStateRef = useRef(state);
-  const latestCanvasTextChangeRef = useRef(onCanvasTextChange);
-  const isTextEditingRef = useRef(false);
-  const hasHandledInitialFitRef = useRef(false);
-  stateRef.current = state;
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<
+    CanvasNode,
+    CanvasEdge
+  > | null>(null);
+  const [isEditingText, setIsEditingText] = useState(false);
 
-  const scheduleCanvasTextChange = useCallback(() => {
-    if (
-      !latestCanvasTextChangeRef.current
-      || pendingCanvasTextFlushRef.current
-    ) {
-      return;
-    }
-
-    pendingCanvasTextFlushRef.current = scheduleCanvasTextSerialization(() => {
-      pendingCanvasTextFlushRef.current = null;
-      const callback = latestCanvasTextChangeRef.current;
-      if (!callback) return;
-
-      const serialized = serializeCanvasToText(latestCanvasTextStateRef.current);
-      callback(serialized.text, serialized.metadata);
-    });
-  }, []);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  // Pre-interaction snapshot; committing against it turns a whole drag,
+  // resize, or text edit into a single undo entry.
+  const interactionBaseRef = useRef<CanvasSnapshot | null>(null);
 
   useEffect(() => {
     onCanvasDirtyChange?.(isDirty);
   }, [isDirty, onCanvasDirtyChange]);
 
   useEffect(() => {
-    latestCanvasTextStateRef.current = state;
-    latestCanvasTextChangeRef.current = onCanvasTextChange;
-
-    if (!onCanvasTextChange) {
-      pendingCanvasTextFlushRef.current?.();
-      pendingCanvasTextFlushRef.current = null;
-      return;
-    }
-
-    if (isTextEditingRef.current) {
-      pendingCanvasTextFlushRef.current?.();
-      pendingCanvasTextFlushRef.current = null;
-      return;
-    }
-
-    scheduleCanvasTextChange();
-  }, [onCanvasTextChange, scheduleCanvasTextChange, state]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    applyEphemeral({ type: "settle-collisions" });
-    return () => {
-      mountedRef.current = false;
-      pendingCanvasTextFlushRef.current?.();
-      pendingCanvasTextFlushRef.current = null;
-    };
-  }, [applyEphemeral]);
+    if (isEditingText) return;
+    onCanvasTextChange?.(serializeCanvasToText(snapshot));
+  }, [isEditingText, onCanvasTextChange, snapshot]);
 
   const beginInteraction = useCallback(() => {
-    interactionSnapshotRef.current ??= stateRef.current;
+    interactionBaseRef.current ??= snapshotRef.current;
   }, []);
 
   const finishInteraction = useCallback(
-    (
-      geometries: FlowNodeGeometry[] = [],
-      settleIds: string[] = [],
-      skipSettling = false
-    ) => {
-      if (geometries.length > 0) {
-        applyEphemeral({ type: "update-node-geometries", geometries });
+    (settleIds?: string[]) => {
+      if (settleIds) {
+        updateEphemeral((current) => resolveCollisions(current, settleIds));
       }
-      if (!skipSettling && settleIds.length > 0) {
-        applyEphemeral({ type: "settle-collisions", pinnedIds: settleIds });
-      }
-
-      const snapshot = interactionSnapshotRef.current;
-      interactionSnapshotRef.current = null;
-      if (snapshot) commitSnapshot(snapshot);
+      const base = interactionBaseRef.current;
+      interactionBaseRef.current = null;
+      if (base) commitFrom(base);
     },
-    [applyEphemeral, commitSnapshot]
+    [commitFrom, updateEphemeral]
   );
 
-  const handleResizeEnd = useCallback(
-    (geometry: FlowNodeGeometry) =>
-      finishInteraction([geometry], [geometry.id]),
-    [finishInteraction]
-  );
-
-  const queueSelectionChanges = useCallback(
-    (changes: CanvasSelectionChange[]) => {
-      if (changes.length === 0) return;
-
-      for (const change of changes) {
-        pendingSelectionChangesRef.current.set(change.id, change.selected);
-      }
-      if (selectionFlushQueuedRef.current) return;
-
-      selectionFlushQueuedRef.current = true;
-      queueMicrotask(() => {
-        selectionFlushQueuedRef.current = false;
-        const queued = Array.from(
-          pendingSelectionChangesRef.current,
-          ([id, selected]) => ({ id, selected })
-        );
-        pendingSelectionChangesRef.current.clear();
-        if (mountedRef.current && queued.length > 0) {
-          apply({ type: "change-selection", changes: queued });
-        }
-      });
+  const handleNodesChange: OnNodesChange<CanvasNode> = useCallback(
+    (changes: NodeChange<CanvasNode>[]) => {
+      // Removals are committed as one history entry in handleDelete.
+      const applied = changes.filter((change) => change.type !== "remove");
+      if (applied.length === 0) return;
+      updateEphemeral((current) => ({
+        ...current,
+        nodes: applyNodeChanges(applied, current.nodes)
+      }));
     },
-    [apply]
+    [updateEphemeral]
   );
 
-  const handleNodesChange: OnNodesChange<SystemFlowNode> = useCallback(
-    (changes: NodeChange<SystemFlowNode>[]) => {
-      queueSelectionChanges(flowSelectionChanges(changes, []));
-      const geometries = geometryChanges(changes, stateRef.current);
-      if (geometries.length > 0) {
-        applyEphemeral({ type: "update-node-geometries", geometries });
-      }
+  const handleEdgesChange: OnEdgesChange<CanvasEdge> = useCallback(
+    (changes: EdgeChange<CanvasEdge>[]) => {
+      const applied = changes.filter((change) => change.type !== "remove");
+      if (applied.length === 0) return;
+      updateEphemeral((current) => ({
+        ...current,
+        edges: applyEdgeChanges(applied, current.edges)
+      }));
     },
-    [applyEphemeral, queueSelectionChanges]
+    [updateEphemeral]
   );
 
-  const handleEdgesChange: OnEdgesChange<SystemFlowEdge> = useCallback(
-    (changes: EdgeChange<SystemFlowEdge>[]) => {
-      queueSelectionChanges(flowSelectionChanges([], changes));
-    },
-    [queueSelectionChanges]
-  );
-
-  const handleNodeDragStart: OnNodeDrag<SystemFlowNode> = useCallback(() => {
+  const handleNodeDragStart: OnNodeDrag<CanvasNode> = useCallback(() => {
     beginInteraction();
   }, [beginInteraction]);
 
-  const handleNodeDragStop: OnNodeDrag<SystemFlowNode> = useCallback(
+  const handleNodeDragStop: OnNodeDrag<CanvasNode> = useCallback(
     (event, node, draggedNodes) => {
-      const finalNodes = draggedNodes.length > 0 ? draggedNodes : [node];
+      const dragged = draggedNodes.length > 0 ? draggedNodes : [node];
+      const skipSettle = "altKey" in event && event.altKey;
       finishInteraction(
-        finalNodes.map((item) => ({
-          id: item.id,
-          x: item.position.x,
-          y: item.position.y
-        })),
-        finalNodes.map((item) => item.id),
-        "altKey" in event && event.altKey
+        skipSettle ? undefined : dragged.map((item) => item.id)
       );
     },
     [finishInteraction]
   );
 
   const handleDelete = useCallback(
-    ({
-      nodes,
-      edges
-    }: {
-      nodes: SystemFlowNode[];
-      edges: SystemFlowEdge[];
-    }) => {
-      const ids = [
-        ...nodes.map((node) => node.id),
-        ...edges.map((edge) => edge.id)
-      ];
-      if (ids.length > 0) apply({ type: "delete-elements", ids });
+    ({ nodes, edges }: { nodes: CanvasNode[]; edges: CanvasEdge[] }) => {
+      if (nodes.length === 0 && edges.length === 0) return;
+      const nodeIds = new Set(nodes.map((node) => node.id));
+      const edgeIds = new Set(edges.map((edge) => edge.id));
+      update((current) => ({
+        nodes: current.nodes.filter((node) => !nodeIds.has(node.id)),
+        edges: current.edges.filter(
+          (edge) =>
+            !edgeIds.has(edge.id) &&
+            !nodeIds.has(edge.source) &&
+            !nodeIds.has(edge.target)
+        )
+      }));
     },
-    [apply]
+    [update]
   );
 
   const handleConnect: OnConnect = useCallback(
     (connection) => {
-      if (isSameFlowEndpoint(connection)) return;
-      const current = stateRef.current;
-      const from = current.elements[connection.source];
-      const to = current.elements[connection.target];
-      if (!isNode(from) || !isNode(to)) return;
+      if (isSelfConnection(connection)) return;
+      const current = snapshotRef.current;
+      const source = current.nodes.find((n) => n.id === connection.source);
+      const target = current.nodes.find((n) => n.id === connection.target);
+      if (!source || !target) return;
 
-      const endpoints = flowConnectionToEndpoints(connection);
-      apply({
-        type: "add-connection",
-        connection: createConnection(
-          connection.source,
-          connection.target,
-          "",
-          {
-            fromFieldId: endpoints.from.fieldId,
-            toFieldId: endpoints.to.fieldId,
-            fromAnchor: endpoints.from.anchor,
-            toAnchor: endpoints.to.anchor,
-            fromFieldSide: endpoints.from.fieldSide,
-            toFieldSide: endpoints.to.fieldSide,
-            cardinality: connectionCardinality
-          }
-        ),
-        select: true
-      });
+      const edge = createEdge(
+        connection,
+        connectionCardinality,
+        source.data.kind === "table" && target.data.kind === "table"
+      );
+      update((state) =>
+        resolveCollisions({
+          nodes: setSelected(state.nodes, () => false),
+          edges: [
+            ...setSelected(state.edges, () => false),
+            { ...edge, selected: true }
+          ]
+        })
+      );
       setTool("select");
     },
-    [apply, connectionCardinality]
+    [connectionCardinality, update]
   );
 
-  const handleReconnect: OnReconnect<SystemFlowEdge> = useCallback(
-    (flowEdge, connection) => {
-      if (isSameFlowEndpoint(connection)) return;
-      const current = stateRef.current;
-      const canvasConnection = current.elements[flowEdge.id];
-      const from = current.elements[connection.source];
-      const to = current.elements[connection.target];
-      if (!isConnection(canvasConnection) || !isNode(from) || !isNode(to)) {
-        return;
-      }
+  const handleReconnect: OnReconnect<CanvasEdge> = useCallback(
+    (edge, connection) => {
+      if (isSelfConnection(connection)) return;
+      const current = snapshotRef.current;
+      const source = current.nodes.find((n) => n.id === connection.source);
+      const target = current.nodes.find((n) => n.id === connection.target);
+      if (!source || !target) return;
 
-      const endpoints = flowConnectionToEndpoints(connection);
-      apply({
-        type: "update-element",
-        id: canvasConnection.id,
-        patch: {
-          fromId: connection.source,
-          toId: connection.target,
-          fromFieldId: endpoints.from.fieldId,
-          toFieldId: endpoints.to.fieldId,
-          fromAnchor: endpoints.from.anchor,
-          toAnchor: endpoints.to.anchor,
-          fromFieldSide: endpoints.from.fieldSide,
-          toFieldSide: endpoints.to.fieldSide,
-          label:
-            from.kind === "table" && to.kind === "table"
-              ? ""
-              : canvasConnection.label
-        }
-      });
+      const isTableRelationship =
+        source.data.kind === "table" && target.data.kind === "table";
+      update((state) => ({
+        ...state,
+        edges: state.edges.map((item) =>
+          item.id === edge.id && item.data
+            ? {
+                ...item,
+                source: connection.source,
+                target: connection.target,
+                sourceHandle: connection.sourceHandle ?? undefined,
+                targetHandle: connection.targetHandle ?? undefined,
+                data: {
+                  ...item.data,
+                  isTableRelationship,
+                  label: isTableRelationship ? "" : item.data.label
+                }
+              }
+            : item
+        )
+      }));
       setTool("select");
     },
-    [apply]
+    [update]
   );
 
   const handleEditStart = useCallback(() => {
-    isTextEditingRef.current = true;
-    pendingCanvasTextFlushRef.current?.();
-    pendingCanvasTextFlushRef.current = null;
+    setIsEditingText(true);
     beginInteraction();
   }, [beginInteraction]);
 
   const handleEditEnd = useCallback(() => {
-    isTextEditingRef.current = false;
-    applyEphemeral({ type: "settle-collisions" });
+    setIsEditingText(false);
+    updateEphemeral((current) => resolveCollisions(current));
     finishInteraction();
-    scheduleCanvasTextChange();
-  }, [applyEphemeral, finishInteraction, scheduleCanvasTextChange]);
+  }, [finishInteraction, updateEphemeral]);
 
   const handleEditComplete = useCallback(() => {
     setAutoFocusNodeId(null);
@@ -377,78 +273,97 @@ export function SystemDesignCanvas({
     setTool("select");
   }, []);
 
-  const handleLabelChange = useCallback(
+  const handleNodeLabelChange = useCallback(
     (id: string, label: string) => {
       markDirty();
-      applyEphemeral({ type: "update-element", id, patch: { label } });
-    }, [applyEphemeral, markDirty]
+      updateEphemeral((current) => ({
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.id === id ? { ...node, data: { ...node.data, label } } : node
+        )
+      }));
+    },
+    [markDirty, updateEphemeral]
+  );
+
+  const handleEdgeLabelChange = useCallback(
+    (id: string, label: string) => {
+      markDirty();
+      updateEphemeral((current) => ({
+        ...current,
+        edges: current.edges.map((edge) =>
+          edge.id === id && edge.data
+            ? { ...edge, data: { ...edge.data, label } }
+            : edge
+        )
+      }));
+    },
+    [markDirty, updateEphemeral]
   );
 
   const handleFieldTextChange = useCallback(
     (tableId: string, fieldId: string, text: string) => {
-      const table = stateRef.current.elements[tableId];
-      if (!table || table.kind !== "table") return;
       markDirty();
-      applyEphemeral({
-        type: "update-element",
-        id: tableId,
-        patch: {
-          fields: table.fields.map((field) =>
+      updateEphemeral((current) =>
+        updateTable(current, tableId, (fields) =>
+          fields.map((field) =>
             field.id === fieldId ? { ...field, text } : field
           )
-        }
-      });
+        )
+      );
     },
-    [applyEphemeral, markDirty]
+    [markDirty, updateEphemeral]
   );
 
   const handleToggleFieldKey = useCallback(
-    (
-      tableId: string,
-      fieldId: string,
-      key: "primaryKey" | "foreignKey"
-    ) => {
-      const table = stateRef.current.elements[tableId];
-      if (!table || table.kind !== "table") return;
-      apply({
-        type: "update-element",
-        id: tableId,
-        patch: {
-          fields: table.fields.map((field) =>
-            field.id === fieldId
-              ? { ...field, [key]: !field[key] }
-              : field
+    (tableId: string, fieldId: string, key: "primaryKey" | "foreignKey") => {
+      update((current) =>
+        updateTable(current, tableId, (fields) =>
+          fields.map((field) =>
+            field.id === fieldId ? { ...field, [key]: !field[key] } : field
           )
-        }
-      });
+        )
+      );
     },
-    [apply]
+    [update]
   );
 
   const handleAddField = useCallback(
     (tableId: string) => {
-      const table = stateRef.current.elements[tableId];
-      if (!table || table.kind !== "table") return;
-      apply({
-        type: "update-element",
-        id: tableId,
-        patch: { fields: [...table.fields, createField()] }
+      update((current) => {
+        const grown = updateTable(current, tableId, (fields) => [
+          ...fields,
+          createField()
+        ]);
+        return grown === current
+          ? current
+          : resolveCollisions(grown, [tableId]);
       });
     },
-    [apply]
+    [update]
   );
 
   const handleRemoveField = useCallback(
     (tableId: string, fieldId: string) => {
-      const table = stateRef.current.elements[tableId];
-      if (!table || table.kind !== "table") return;
-      apply({
-        type: "remove-table-field",
-        tableId,
-        fieldId
+      update((current) => {
+        const shrunk = updateTable(current, tableId, (fields) =>
+          fields.filter((field) => field.id !== fieldId)
+        );
+        if (shrunk === current) return current;
+        return {
+          ...shrunk,
+          edges: shrunk.edges.filter(
+            (edge) => !edgeUsesField(edge, tableId, fieldId)
+          )
+        };
       });
     },
-    [apply]
+    [update]
+  );
+
+  const handleResizeEnd = useCallback(
+    (id: string) => finishInteraction([id]),
+    [finishInteraction]
   );
 
   const handleAutoFocusHandled = useCallback((id: string) => {
@@ -456,53 +371,69 @@ export function SystemDesignCanvas({
   }, []);
 
   const handleEdgeDoubleClick = useCallback(
-    (event: ReactMouseEvent, edge: SystemFlowEdge) => {
+    (event: ReactMouseEvent, edge: CanvasEdge) => {
       event.preventDefault();
-      const connection = stateRef.current.elements[edge.id];
-      if (!isConnection(connection)) return;
-      const from = stateRef.current.elements[connection.fromId];
-      const to = stateRef.current.elements[connection.toId];
+      if (!edge.data?.isTableRelationship) return;
 
-      if (isNode(from) && isNode(to) && isTableRelationship(from, to)) {
-        setCardinalityMenu({
-          connectionId: connection.id,
-          x: Math.min(event.clientX + 10, window.innerWidth - 250),
-          y: Math.min(event.clientY + 10, window.innerHeight - 188)
-        });
-        apply({ type: "select", ids: [connection.id] });
-        return;
-      }
+      setCardinalityMenu({
+        connectionId: edge.id,
+        x: Math.min(event.clientX + 10, window.innerWidth - 250),
+        y: Math.min(event.clientY + 10, window.innerHeight - 188)
+      });
+      updateEphemeral((current) => ({
+        nodes: setSelected(current.nodes, () => false),
+        edges: setSelected(current.edges, (id) => id === edge.id)
+      }));
     },
-    [apply]
+    [updateEphemeral]
   );
+
+  const clearSelection = useCallback(() => {
+    updateEphemeral((current) => {
+      const nodes = setSelected(current.nodes, () => false);
+      const edges = setSelected(current.edges, () => false);
+      return nodes === current.nodes && edges === current.edges
+        ? current
+        : { nodes, edges };
+    });
+  }, [updateEphemeral]);
 
   const handlePaneClick = useCallback(
     (event: ReactMouseEvent) => {
       setCardinalityMenu(null);
 
       if (tool === "select" || tool === "connector") {
-        if (stateRef.current.selectedIds.length > 0) {
-          apply({ type: "clear-selection" });
-        }
+        clearSelection();
         return;
       }
 
-      const flowPoint = flowInstanceRef.current?.screenToFlowPosition({
+      const point = flowInstance?.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY
       });
-      if (!flowPoint) return;
+      if (!point) return;
 
-      const node = createNode(tool, flowPoint.x - 80, flowPoint.y - 40);
-      apply({ type: "add-node", node, select: true });
+      const node = createNode(tool, point.x - 80, point.y - 40);
+      update((current) =>
+        resolveCollisions(
+          {
+            nodes: [
+              ...setSelected(current.nodes, () => false),
+              { ...node, selected: true }
+            ],
+            edges: setSelected(current.edges, () => false)
+          },
+          [node.id]
+        )
+      );
       setAutoFocusNodeId(node.id);
       setTool("select");
     },
-    [apply, tool]
+    [clearSelection, flowInstance, tool, update]
   );
 
   const isValidConnection = useCallback(
-    (connection: Connection | SystemFlowEdge) =>
+    (connection: Connection | CanvasEdge) =>
       !(
         connection.source === connection.target &&
         (connection.sourceHandle ?? null) === (connection.targetHandle ?? null)
@@ -538,76 +469,80 @@ export function SystemDesignCanvas({
         setAutoFocusNodeId(null);
         setCardinalityMenu(null);
         setTool("select");
-        if (stateRef.current.selectedIds.length > 0) {
-          apply({ type: "clear-selection" });
-        }
+        clearSelection();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [apply, redo, undo]);
+  }, [clearSelection, redo, undo]);
 
-  const flowElements = useMemo(
-    () =>
-      canvasStateToFlowElements(state, {
-        tool,
-        autoFocusNodeId,
-        onResizeStart: beginInteraction,
-        onResizeEnd: handleResizeEnd,
-        onEditStart: handleEditStart,
-        onEditEnd: handleEditEnd,
-        onEditComplete: handleEditComplete,
-        onAutoFocusHandled: handleAutoFocusHandled,
-        onLabelChange: handleLabelChange,
-        onFieldTextChange: handleFieldTextChange,
-        onToggleFieldKey: handleToggleFieldKey,
-        onAddField: handleAddField,
-        onRemoveField: handleRemoveField
-      }),
+  const canvasActions = useMemo<CanvasActions>(
+    () => ({
+      tool,
+      autoFocusNodeId,
+      onAutoFocusHandled: handleAutoFocusHandled,
+      onEditStart: handleEditStart,
+      onEditEnd: handleEditEnd,
+      onEditComplete: handleEditComplete,
+      onResizeStart: beginInteraction,
+      onResizeEnd: handleResizeEnd,
+      onNodeLabelChange: handleNodeLabelChange,
+      onEdgeLabelChange: handleEdgeLabelChange,
+      onFieldTextChange: handleFieldTextChange,
+      onToggleFieldKey: handleToggleFieldKey,
+      onAddField: handleAddField,
+      onRemoveField: handleRemoveField
+    }),
     [
       autoFocusNodeId,
       beginInteraction,
       handleAddField,
       handleAutoFocusHandled,
-      handleEditEnd,
+      handleEdgeLabelChange,
       handleEditComplete,
+      handleEditEnd,
       handleEditStart,
       handleFieldTextChange,
-      handleLabelChange,
+      handleNodeLabelChange,
       handleRemoveField,
       handleResizeEnd,
       handleToggleFieldKey,
-      state,
       tool
     ]
   );
 
-  const fitViewOptions: FitViewOptions<SystemFlowNode> = useMemo(
+  const edges = useMemo(
+    () =>
+      snapshot.edges.map((edge) =>
+        edge.data?.isTableRelationship
+          ? edge
+          : {
+              ...edge,
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: edge.selected
+                  ? "var(--canvas-connection-selected)"
+                  : "var(--canvas-connection)"
+              }
+            }
+      ),
+    [snapshot.edges]
+  );
+
+  const fitViewOptions: FitViewOptions<CanvasNode> = useMemo(
     () => createCanvasFitViewOptions(rightOcclusion),
     [rightOcclusion]
   );
 
-  useEffect(() => {
-    if (!flowInstance) return;
-
-    runInitialCanvasFit({
-      handledRef: hasHandledInitialFitRef,
-      occlusion: rightOcclusion,
-      expectedNodeCount: flowElements.nodes.length,
-      nodes: flowInstance.getNodes(),
-      fitViewOptions,
-      fitView: (options) =>
-        void fitCanvasToLeft(flowInstance, options, rightOcclusion)
-    });
-  }, [fitViewOptions, flowElements.nodes, flowInstance, rightOcclusion]);
-
   const handleFitView = useCallback(() => {
-    const instance = flowInstanceRef.current;
-    if (!instance) return;
+    if (!flowInstance) return;
+    void fitCanvasToLeft(flowInstance, fitViewOptions, rightOcclusion);
+  }, [fitViewOptions, flowInstance, rightOcclusion]);
 
-    void fitCanvasToLeft(instance, fitViewOptions, rightOcclusion);
-  }, [fitViewOptions, rightOcclusion]);
+  const menuEdge = cardinalityMenu
+    ? snapshot.edges.find((edge) => edge.id === cardinalityMenu.connectionId)
+    : undefined;
 
   return (
     <section className="system-design-flow relative h-full min-h-[560px] select-none overflow-hidden bg-canvas-paper text-canvas-ink">
@@ -623,85 +558,150 @@ export function SystemDesignCanvas({
         toolbarEnd={toolbarEnd}
       />
 
-      <ReactFlow<SystemFlowNode, SystemFlowEdge>
-        nodes={flowElements.nodes}
-        edges={flowElements.edges}
-        nodeTypes={NODE_TYPES}
-        edgeTypes={EDGE_TYPES}
-        defaultViewport={DEFAULT_VIEWPORT}
-        minZoom={0.25}
-        maxZoom={2.5}
-        onInit={(instance) => {
-          flowInstanceRef.current = instance;
-          setFlowInstance(instance);
-        }}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onNodeDragStart={handleNodeDragStart}
-        onNodeDragStop={handleNodeDragStop}
-        onDelete={handleDelete}
-        onConnect={handleConnect}
-        onReconnect={handleReconnect}
-        onEdgeDoubleClick={handleEdgeDoubleClick}
-        onPaneClick={handlePaneClick}
-        isValidConnection={isValidConnection}
-        connectionMode={ConnectionMode.Loose}
-        connectionLineComponent={SystemDesignConnectionLine}
-        connectionLineStyle={{ stroke: "var(--primary)" }}
-        nodesDraggable={tool === "select"}
-        nodesConnectable
-        edgesReconnectable={tool === "select" || tool === "connector"}
-        elementsSelectable
-        panOnDrag={tool === "select"}
-        panOnScroll
-        zoomOnScroll={false}
-        zoomOnPinch
-        zoomActivationKeyCode={["Meta", "Control"]}
-        zoomOnDoubleClick={false}
-        connectOnClick
-        deleteKeyCode={["Backspace", "Delete"]}
-        multiSelectionKeyCode={["Meta", "Control"]}
-        selectionKeyCode="Shift"
-        attributionPosition="bottom-right"
-      >
-        <Background
-          variant={BackgroundVariant.Dots}
-          color="var(--canvas-grid-dot)"
-          gap={24}
-          size={2}
-        />
-        <Controls
-          position="bottom-left"
-          showInteractive={false}
-          showFitView={false}
-          className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
+      <CanvasActionsContext.Provider value={canvasActions}>
+        <ReactFlow<CanvasNode, CanvasEdge>
+          nodes={snapshot.nodes}
+          edges={edges}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
+          defaultViewport={DEFAULT_VIEWPORT}
+          minZoom={0.25}
+          maxZoom={2.5}
+          onInit={setFlowInstance}
+          onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
+          onNodeDragStart={handleNodeDragStart}
+          onNodeDragStop={handleNodeDragStop}
+          onDelete={handleDelete}
+          onConnect={handleConnect}
+          onReconnect={handleReconnect}
+          onEdgeDoubleClick={handleEdgeDoubleClick}
+          onPaneClick={handlePaneClick}
+          isValidConnection={isValidConnection}
+          connectionMode={ConnectionMode.Loose}
+          connectionLineComponent={SystemDesignConnectionLine}
+          connectionLineStyle={{ stroke: "var(--primary)" }}
+          nodesDraggable={tool === "select"}
+          nodesConnectable
+          edgesReconnectable={tool === "select" || tool === "connector"}
+          elementsSelectable
+          panOnDrag={tool === "select"}
+          panOnScroll
+          zoomOnScroll={false}
+          zoomOnPinch
+          zoomActivationKeyCode={["Meta", "Control"]}
+          zoomOnDoubleClick={false}
+          connectOnClick
+          deleteKeyCode={["Backspace", "Delete"]}
+          multiSelectionKeyCode={["Meta", "Control"]}
+          selectionKeyCode="Shift"
+          attributionPosition="bottom-right"
         >
-          <ControlButton
-            onClick={handleFitView}
-            className="react-flow__controls-fitview"
-            aria-label="Fit view"
-            title="Fit view"
+          <Background
+            variant={BackgroundVariant.Dots}
+            color="var(--canvas-grid-dot)"
+            gap={24}
+            size={2}
+          />
+          <Controls
+            position="bottom-left"
+            showInteractive={false}
+            showFitView={false}
+            className="!bottom-4 !left-4 overflow-hidden rounded-lg border border-border bg-card/95 shadow-sm backdrop-blur-sm"
           >
-            <Scan aria-hidden="true" className="size-4" />
-          </ControlButton>
-        </Controls>
-      </ReactFlow>
+            <ControlButton
+              onClick={handleFitView}
+              className="react-flow__controls-fitview"
+              aria-label="Fit view"
+              title="Fit view"
+            >
+              <Scan aria-hidden="true" className="size-4" />
+            </ControlButton>
+          </Controls>
+        </ReactFlow>
+      </CanvasActionsContext.Provider>
 
-      {cardinalityMenu ? (
+      {cardinalityMenu && menuEdge?.data ? (
         <CardinalityMenu
           menu={cardinalityMenu}
-          connection={state.elements[cardinalityMenu.connectionId]}
+          cardinality={menuEdge.data.cardinality}
           onSelect={(cardinality) => {
-            apply({
-              type: "update-element",
-              id: cardinalityMenu.connectionId,
-              patch: { cardinality }
-            });
+            update((current) => ({
+              ...current,
+              edges: current.edges.map((edge) =>
+                edge.id === cardinalityMenu.connectionId && edge.data
+                  ? { ...edge, data: { ...edge.data, cardinality } }
+                  : edge
+              )
+            }));
             setCardinalityMenu(null);
           }}
           onClose={() => setCardinalityMenu(null)}
         />
       ) : null}
     </section>
+  );
+}
+
+function isSelfConnection(connection: Connection): boolean {
+  return (
+    connection.source === connection.target &&
+    connection.sourceHandle === connection.targetHandle
+  );
+}
+
+function setSelected<T extends { id: string; selected?: boolean }>(
+  items: T[],
+  isSelected: (id: string) => boolean
+): T[] {
+  let changed = false;
+  const next = items.map((item) => {
+    const selected = isSelected(item.id);
+    if ((item.selected ?? false) === selected) return item;
+    changed = true;
+    return { ...item, selected };
+  });
+  return changed ? next : items;
+}
+
+function updateTable(
+  snapshot: CanvasSnapshot,
+  tableId: string,
+  updateFields: (
+    fields: Extract<CanvasNode["data"], { kind: "table" }>["fields"]
+  ) => Extract<CanvasNode["data"], { kind: "table" }>["fields"]
+): CanvasSnapshot {
+  const table = snapshot.nodes.find((node) => node.id === tableId);
+  if (!isTableNode(table)) return snapshot;
+
+  const fields = updateFields(table.data.fields);
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) =>
+      node.id === tableId
+        ? {
+            ...node,
+            height: Math.max(node.height ?? 0, tableHeightForFields(fields)),
+            data: { ...table.data, fields }
+          }
+        : node
+    )
+  };
+}
+
+function edgeUsesField(
+  edge: CanvasEdge,
+  tableId: string,
+  fieldId: string
+): boolean {
+  const sourceHandle = parseHandleId(edge.sourceHandle);
+  const targetHandle = parseHandleId(edge.targetHandle);
+  return (
+    (edge.source === tableId &&
+      "fieldId" in sourceHandle &&
+      sourceHandle.fieldId === fieldId) ||
+    (edge.target === tableId &&
+      "fieldId" in targetHandle &&
+      targetHandle.fieldId === fieldId)
   );
 }

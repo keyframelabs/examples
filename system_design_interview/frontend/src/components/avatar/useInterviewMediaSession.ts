@@ -9,14 +9,9 @@ import {
 import {
   createCanvasContextSync,
   INITIAL_CANVAS_SYNC_STATUS,
+  type CanvasContextSync,
   type CanvasSyncStatus
 } from "@/utils/avatar/canvasContextSync";
-import {
-  attachPersonaTranscriptObserver,
-  cleanupPersonaViewRuntime,
-  type PersonaViewRuntime,
-  sendPersonaContext
-} from "@/utils/avatar/personaViewRuntime";
 import {
   hasLiveVideoTrack,
   isMissingUserCameraError,
@@ -24,25 +19,27 @@ import {
   stopMediaStream,
   userCameraErrorMessage
 } from "@/utils/interview/userCamera";
-import {
-  createInterviewTimerState,
-  startInterviewTimer,
-  stopInterviewTimer,
-  tickInterviewTimer,
-  type InterviewTimerState
-} from "@/utils/interview/interviewTimer";
+import { INTERVIEW_DURATION_MS } from "@/utils/interview/interviewTimer";
 
 export type InterviewStartup = {
   cameraRequest: Promise<MediaStream>;
   liveSessionRequest: Promise<LiveSessionResponse>;
 };
 
-type CameraStatus =
+export type AvatarStatus = "idle" | "connecting" | "connected";
+
+export type CameraStatus =
   | "idle"
   | "requesting"
   | "ready"
   | "unavailable"
   | "off";
+
+type AvatarRuntime = {
+  view: PersonaView;
+  contextSync: CanvasContextSync;
+  closeState: { expected: boolean; disconnectHandled: boolean };
+};
 
 type InterviewMediaSessionOptions = {
   canvasText: string;
@@ -59,35 +56,30 @@ export function useInterviewMediaSession({
 }: InterviewMediaSessionOptions) {
   const personaContainerRef = useRef<HTMLDivElement | null>(null);
   const userVideoRef = useRef<HTMLVideoElement | null>(null);
-  const userCameraStreamRef = useRef<MediaStream | null>(null);
-  const runtimeRef = useRef<PersonaViewRuntime | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const runtimeRef = useRef<AvatarRuntime | null>(null);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const isMountedRef = useRef(false);
   const latestCanvasTextRef = useRef(canvasText);
-  const lastLoggedContextVersionRef = useRef(0);
-  const lastLoggedContextErrorRef = useRef<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+
+  const [avatarStatus, setAvatarStatus] = useState<AvatarStatus>("idle");
   const [isEndingCall, setIsEndingCall] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>("idle");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [interviewTimer, setInterviewTimer] = useState<InterviewTimerState>(
-    createInterviewTimerState
-  );
-  const interviewTimerRef = useRef(interviewTimer);
-  const [events, setEvents] = useState<string[]>([]);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [canvasSyncStatus, setCanvasSyncStatus] = useState<CanvasSyncStatus>(
     INITIAL_CANVAS_SYNC_STATUS
   );
+  const [timerDeadline, setTimerDeadline] = useState<number | null>(null);
+  const [timeRemainingMs, setTimeRemainingMs] = useState(INTERVIEW_DURATION_MS);
 
   useEffect(() => {
     latestCanvasTextRef.current = canvasText;
     const runtime = runtimeRef.current;
-    if (!runtime?.contextSync.getStatus().isReady) return;
-
-    runtime.contextSync.push(canvasText);
+    if (runtime?.contextSync.getStatus().isReady) {
+      runtime.contextSync.push(canvasText);
+    }
   }, [canvasText]);
 
   useEffect(() => {
@@ -111,8 +103,8 @@ export function useInterviewMediaSession({
 
     return () => {
       isMountedRef.current = false;
-      stopMediaStream(userCameraStreamRef.current);
-      userCameraStreamRef.current = null;
+      stopMediaStream(cameraStreamRef.current);
+      cameraStreamRef.current = null;
       void cleanupRuntime().catch((error) => {
         console.error("Failed to clean up avatar.", error);
       });
@@ -120,50 +112,50 @@ export function useInterviewMediaSession({
   }, []);
 
   useEffect(() => {
+    // The frame delay makes StrictMode's mount/unmount/mount cycle cancel the
+    // first join, so development builds do not connect the avatar twice.
     const frame = window.requestAnimationFrame(() => {
-      void joinInterview(startup);
+      void Promise.allSettled([
+        enableCamera(startup.cameraRequest),
+        connect(startup.liveSessionRequest)
+      ]);
     });
 
     return () => window.cancelAnimationFrame(frame);
   }, [startup]);
 
   useEffect(() => {
-    const deadline = interviewTimer.deadline;
-    if (deadline === null) return;
+    if (timerDeadline === null) return;
 
-    let interval: number | undefined;
-
-    const updateTimer = () => {
-      const currentTimer = interviewTimerRef.current;
-      if (currentTimer.deadline !== deadline) return;
-
-      const nextTimer = tickInterviewTimer(currentTimer, Date.now());
-      if (nextTimer === currentTimer) return;
-
-      commitInterviewTimer(nextTimer);
-      if (!nextTimer.hasExpired) return;
-
-      if (interval !== undefined) window.clearInterval(interval);
-      void disconnectAvatar();
+    const tick = () => {
+      const remaining = Math.max(0, timerDeadline - Date.now());
+      setTimeRemainingMs(remaining);
+      if (remaining === 0) {
+        window.clearInterval(interval);
+        setTimerDeadline(null);
+        void disconnectAvatar();
+      }
     };
 
-    updateTimer();
-    if (!interviewTimerRef.current.hasExpired) {
-      interval = window.setInterval(updateTimer, 250);
-    }
+    const interval = window.setInterval(tick, 250);
+    tick();
     return () => window.clearInterval(interval);
-  }, [interviewTimer.deadline]);
+  }, [timerDeadline]);
+
+  // The remaining time freezes at the last 250ms tick, which is exact enough
+  // for a display that rounds up to whole seconds.
+  function stopTimer() {
+    setTimerDeadline(null);
+  }
 
   async function connect(
     liveSessionRequest = createLiveSession(packet.packetId)
   ) {
-    commitInterviewTimer(createInterviewTimerState());
+    setTimerDeadline(null);
+    setTimeRemainingMs(INTERVIEW_DURATION_MS);
     setAvatarError(null);
-    setEvents([]);
-    setIsConnecting(true);
+    setAvatarStatus("connecting");
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
-    lastLoggedContextVersionRef.current = 0;
-    lastLoggedContextErrorRef.current = null;
 
     try {
       await cleanupRuntime();
@@ -172,7 +164,7 @@ export function useInterviewMediaSession({
       const container = personaContainerRef.current;
       if (!container) throw new Error("Avatar container is not ready.");
 
-      clearContainer(container);
+      container.replaceChildren();
       const closeState = { expected: false, disconnectHandled: false };
       let connectError: string | null = null;
       const view = new PersonaView({
@@ -181,64 +173,42 @@ export function useInterviewMediaSession({
         voiceAgentDetails: liveSession.voiceAgentDetails,
         dynamicVariables: liveSession.voiceAgentDetails.dynamic_variables,
         videoFit: "cover",
-        onStateChange: (nextStatus) => {
-          logEvent(`PersonaView state: ${nextStatus}`);
-          setIsConnecting(nextStatus === "connecting");
-          setIsConnected(nextStatus === "connected");
-        },
-        onAgentStateChange: (nextStatus) => {
-          logEvent(`Avatar playback: ${nextStatus}`);
+        onStateChange: (status) => {
+          setAvatarStatus(
+            status === "connected"
+              ? "connected"
+              : status === "connecting"
+                ? "connecting"
+                : "idle"
+          );
         },
         onDisconnect: () => {
-          logEvent("Avatar disconnected");
           if (closeState.expected || closeState.disconnectHandled) return;
-
           closeState.disconnectHandled = true;
           handleUnexpectedDisconnect("Avatar disconnected.");
         },
         onError: (error) => {
           connectError = error.message;
-          logEvent(`PersonaView error: ${error.message}`);
           showAvatarError(`Avatar error: ${error.message}`);
         }
       });
       const contextSync = createCanvasContextSync({
-        sendContextUpdate: (text) => sendPersonaContext(view, text),
-        onStatusChange: handleCanvasContextSyncStatus
+        sendContextUpdate: (text) => view.sendContext(text),
+        onStatusChange: setCanvasSyncStatus
       });
 
-      runtimeRef.current = {
-        view,
-        contextSync,
-        detachTranscriptObserver: () => undefined,
-        closeState
-      };
+      runtimeRef.current = { view, contextSync, closeState };
 
-      logEvent("Connecting avatar");
       await view.connect();
       if (!isMountedRef.current) return;
       if (view.status !== "connected") {
         throw new Error(connectError ?? "Avatar failed to connect.");
       }
 
-      const runtime = runtimeRef.current;
-      if (runtime?.view === view) {
-        runtime.detachTranscriptObserver = attachPersonaTranscriptObserver(
-          view,
-          (transcript) => {
-            if (transcript.isFinal && transcript.text.trim()) {
-              logEvent(`Transcript received: ${transcript.role}`);
-            }
-          }
-        );
-      }
-
       contextSync.push(latestCanvasTextRef.current);
       contextSync.start();
-      logEvent("Canvas context sync started");
-      setIsConnected(true);
-      commitInterviewTimer(startInterviewTimer(Date.now()));
-      logEvent("Avatar connected");
+      setAvatarStatus("connected");
+      setTimerDeadline(Date.now() + INTERVIEW_DURATION_MS);
     } catch (error) {
       if (!isMountedRef.current) return;
       try {
@@ -250,10 +220,8 @@ export function useInterviewMediaSession({
         );
       }
       showAvatarError(formatAvatarError(error));
-      setIsConnected(false);
+      setAvatarStatus("idle");
       setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
-    } finally {
-      if (isMountedRef.current) setIsConnecting(false);
     }
   }
 
@@ -262,7 +230,7 @@ export function useInterviewMediaSession({
     setCameraStatus("requesting");
 
     try {
-      const existingStream = userCameraStreamRef.current;
+      const existingStream = cameraStreamRef.current;
       if (hasLiveVideoTrack(existingStream)) {
         setCameraStream(existingStream);
         setCameraStatus("ready");
@@ -271,7 +239,7 @@ export function useInterviewMediaSession({
 
       if (existingStream) {
         stopMediaStream(existingStream);
-        userCameraStreamRef.current = null;
+        cameraStreamRef.current = null;
         setCameraStream(null);
       }
 
@@ -280,55 +248,36 @@ export function useInterviewMediaSession({
         stopMediaStream(stream);
         return;
       }
-      const previousStream = userCameraStreamRef.current;
-      userCameraStreamRef.current = stream;
+      cameraStreamRef.current = stream;
       setCameraStream(stream);
       setCameraStatus("ready");
-      if (previousStream !== stream) stopMediaStream(previousStream);
     } catch (error) {
       if (!isMountedRef.current) return;
       setCameraStatus("unavailable");
-      if (isMissingUserCameraError(error)) {
-        setCameraError(null);
-      } else {
-        showCameraError(userCameraErrorMessage(error));
+      // A machine without a camera is expected; the tile itself communicates
+      // the state, so only real failures surface as errors.
+      if (!isMissingUserCameraError(error)) {
+        setCameraError(userCameraErrorMessage(error));
+        onVisibleError();
       }
     }
   }
 
-  async function joinInterview(initialStartup?: InterviewStartup) {
-    const tasks: Promise<void>[] = [];
+  function toggleCamera() {
     if (cameraStatus !== "ready") {
-      tasks.push(enableCamera(initialStartup?.cameraRequest));
+      void enableCamera();
+      return;
     }
-    if (!isConnected) {
-      tasks.push(connect(initialStartup?.liveSessionRequest));
-    }
-    await Promise.allSettled(tasks);
-  }
 
-  function disableCamera() {
-    const stream = userCameraStreamRef.current;
-    stopMediaStream(stream);
-    userCameraStreamRef.current = null;
+    stopMediaStream(cameraStreamRef.current);
+    cameraStreamRef.current = null;
     setCameraStream(null);
     setCameraStatus("off");
     setCameraError(null);
   }
 
-  function toggleCamera() {
-    if (cameraStatus === "ready") {
-      disableCamera();
-      return;
-    }
-
-    void enableCamera();
-  }
-
   async function disconnectAvatar() {
-    commitInterviewTimer(
-      stopInterviewTimer(interviewTimerRef.current, Date.now())
-    );
+    stopTimer();
     setAvatarError(null);
     setIsEndingCall(true);
 
@@ -344,17 +293,11 @@ export function useInterviewMediaSession({
   }
 
   function toggleAvatar() {
-    if (isConnected) {
+    if (avatarStatus === "connected") {
       void disconnectAvatar();
-      return;
+    } else {
+      void connect();
     }
-
-    void connect();
-  }
-
-  function commitInterviewTimer(timer: InterviewTimerState) {
-    interviewTimerRef.current = timer;
-    setInterviewTimer(timer);
   }
 
   async function cleanupRuntime() {
@@ -371,7 +314,7 @@ export function useInterviewMediaSession({
     }
 
     runtimeRef.current = null;
-    const cleanupPromise = cleanupPersonaViewRuntime(runtime);
+    const cleanupPromise = destroyRuntime(runtime);
     cleanupPromiseRef.current = cleanupPromise;
 
     try {
@@ -385,31 +328,12 @@ export function useInterviewMediaSession({
   }
 
   function resetRuntimeState() {
-    setIsConnected(false);
+    setAvatarStatus("idle");
     setCanvasSyncStatus(INITIAL_CANVAS_SYNC_STATUS);
-    lastLoggedContextVersionRef.current = 0;
-    lastLoggedContextErrorRef.current = null;
-  }
-
-  function handleCanvasContextSyncStatus(status: CanvasSyncStatus) {
-    setCanvasSyncStatus(status);
-
-    if (status.error && status.error !== lastLoggedContextErrorRef.current) {
-      lastLoggedContextErrorRef.current = status.error;
-      logEvent(`Canvas context sync failed: ${status.error}`);
-    }
-    if (!status.error) lastLoggedContextErrorRef.current = null;
-
-    if (status.lastSentVersion > lastLoggedContextVersionRef.current) {
-      lastLoggedContextVersionRef.current = status.lastSentVersion;
-      logEvent("Canvas context sent");
-    }
   }
 
   function handleUnexpectedDisconnect(message: string) {
-    commitInterviewTimer(
-      stopInterviewTimer(interviewTimerRef.current, Date.now())
-    );
+    stopTimer();
     showAvatarError(message);
     void cleanupRuntime().catch((error) => {
       showAvatarError(`${message} ${formatAvatarError(error)}`);
@@ -421,46 +345,33 @@ export function useInterviewMediaSession({
     onVisibleError();
   }
 
-  function showCameraError(message: string) {
-    setCameraError(message);
-    onVisibleError();
-  }
-
-  function logEvent(message: string) {
-    const timestamp = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit"
-    });
-    setEvents((current) => [
-      ...current.slice(-7),
-      `${timestamp} ${message}`
-    ]);
-  }
-
   return {
     personaContainerRef,
     userVideoRef,
-    isConnecting,
-    isConnected,
+    avatarStatus,
     isEndingCall,
     avatarError,
-    cameraError,
     cameraStatus,
-    interviewTimeRemainingMs: interviewTimer.remainingMs,
-    events,
+    cameraError,
+    interviewTimeRemainingMs: timeRemainingMs,
     canvasSyncStatus,
     toggleCamera,
     toggleAvatar
   };
 }
 
-function clearContainer(container: HTMLElement) {
-  while (container.firstChild) container.firstChild.remove();
+async function destroyRuntime(runtime: AvatarRuntime): Promise<void> {
+  runtime.closeState.expected = true;
+  runtime.contextSync.stop();
+
+  try {
+    await runtime.view.disconnect();
+  } finally {
+    runtime.view.videoElement.remove();
+    runtime.view.audioElement.remove();
+  }
 }
 
 function formatAvatarError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "Could not connect avatar.";
+  return error instanceof Error ? error.message : "Could not connect avatar.";
 }

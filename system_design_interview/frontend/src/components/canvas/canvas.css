@@ -1,13 +1,10 @@
 :root {
   --canvas-paper: hsl(210 40% 98%);
   --canvas-ink: hsl(222 33% 15%);
-  --canvas-grid: hsl(215 20% 65%);
   --canvas-grid-dot: hsl(215 20% 65% / 80%);
   --canvas-connection: hsl(215 25% 37%);
   --canvas-connection-selected: hsl(173 80% 26%);
   --canvas-avatar-surface: hsl(210 11% 8%);
-  --canvas-node-actor: hsl(33 100% 96%);
-  --canvas-node-actor-foreground: hsl(17 88% 38%);
   --canvas-node-service: hsl(210 40% 98%);
   --canvas-node-service-foreground: hsl(215 25% 27%);
   --canvas-node-database: hsl(183 100% 96%);
@@ -21,12 +18,9 @@
 @theme inline {
   --color-canvas-paper: var(--canvas-paper);
   --color-canvas-ink: var(--canvas-ink);
-  --color-canvas-grid: var(--canvas-grid);
   --color-canvas-connection: var(--canvas-connection);
   --color-canvas-connection-selected: var(--canvas-connection-selected);
   --color-canvas-avatar-surface: var(--canvas-avatar-surface);
-  --color-canvas-node-actor: var(--canvas-node-actor);
-  --color-canvas-node-actor-foreground: var(--canvas-node-actor-foreground);
   --color-canvas-node-service: var(--canvas-node-service);
   --color-canvas-node-service-foreground: var(
     --canvas-node-service-foreground

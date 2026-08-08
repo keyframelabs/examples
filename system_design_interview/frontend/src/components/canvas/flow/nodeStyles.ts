@@ -1,13 +1,9 @@
-import type { CanvasNode } from "@/components/canvas/model/types";
+import type { NodeKind } from "@/components/canvas/types";
 
 export const NODE_COLORS: Record<
-  CanvasNode["kind"],
+  NodeKind,
   { background: string; foreground: string }
 > = {
-  actor: {
-    background: "var(--canvas-node-actor)",
-    foreground: "var(--canvas-node-actor-foreground)"
-  },
   service: {
     background: "var(--canvas-node-service)",
     foreground: "var(--canvas-node-service-foreground)"

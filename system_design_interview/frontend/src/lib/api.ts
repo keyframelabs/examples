@@ -4,9 +4,8 @@ import type {
 } from "@keyframelabs/elements";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8788";
-const INTERVIEW_CATALOG_RETRY_DELAYS_MS = [250, 500, 1000, 2000] as const;
-
-type KeyframeSessionDetails = SessionDetails;
+// The dev server may still be starting when the page first loads.
+const CATALOG_RETRY_DELAYS_MS = [250, 500, 1000, 2000];
 
 type VoiceAgentDetails = PersonaVoiceAgentDetails & {
   type: "elevenlabs";
@@ -18,7 +17,7 @@ type VoiceAgentDetails = PersonaVoiceAgentDetails & {
 };
 
 export type LiveSessionResponse = {
-  sessionDetails: KeyframeSessionDetails;
+  sessionDetails: SessionDetails;
   voiceAgentDetails: VoiceAgentDetails;
 };
 
@@ -31,69 +30,26 @@ export type InterviewPacket = {
 export async function getInterviewPackets(
   signal?: AbortSignal
 ): Promise<InterviewPacket[]> {
-  const url = `${API_BASE_URL}/api/interviews`;
-  const response = await fetchInterviewCatalog(url, signal);
-  const payload = await parseResponse(response) as {
-    interviews: InterviewPacket[];
+  const fetchCatalog = async () => {
+    const response = await fetch(`${API_BASE_URL}/api/interviews`, { signal });
+    const payload = (await parseResponse(response)) as {
+      interviews: InterviewPacket[];
+    };
+    return payload.interviews;
   };
-  return payload.interviews;
-}
 
-async function fetchInterviewCatalog(
-  url: string,
-  signal?: AbortSignal
-): Promise<Response> {
-  let retryIndex = 0;
-
-  while (true) {
+  for (const retryDelay of CATALOG_RETRY_DELAYS_MS) {
     try {
-      return signal ? await fetch(url, { signal }) : await fetch(url);
+      return await fetchCatalog();
     } catch (error) {
-      const retryDelay = INTERVIEW_CATALOG_RETRY_DELAYS_MS[retryIndex];
-      if (
-        retryDelay === undefined ||
-        signal?.aborted ||
-        !(error instanceof TypeError)
-      ) {
-        throw error;
-      }
-
-      retryIndex += 1;
-      await waitForRetry(retryDelay, signal);
+      // Only network failures are worth retrying; HTTP and abort errors are
+      // surfaced immediately.
+      if (signal?.aborted || !(error instanceof TypeError)) throw error;
+      await sleep(retryDelay, signal);
     }
   }
-}
 
-function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) {
-    return new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
-  }
-
-  if (signal.aborted) {
-    return Promise.reject(abortReason(signal));
-  }
-
-  return new Promise((resolve, reject) => {
-    const timeoutId = globalThis.setTimeout(() => {
-      signal.removeEventListener("abort", handleAbort);
-      resolve();
-    }, delayMs);
-    const handleAbort = () => {
-      globalThis.clearTimeout(timeoutId);
-      signal.removeEventListener("abort", handleAbort);
-      reject(abortReason(signal));
-    };
-
-    signal.addEventListener("abort", handleAbort, { once: true });
-    if (signal.aborted) handleAbort();
-  });
-}
-
-function abortReason(signal: AbortSignal): unknown {
-  return (
-    signal.reason ??
-    new DOMException("The request was aborted.", "AbortError")
-  );
+  return fetchCatalog();
 }
 
 export async function createLiveSession(
@@ -116,13 +72,27 @@ export async function createLiveSession(
 async function parseResponse(response: Response): Promise<unknown> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = isRecord(payload) && typeof payload.error === "string"
-      ? payload.error
-      : `Request failed with ${response.status}`;
+    const message =
+      isRecord(payload) && typeof payload.error === "string"
+        ? payload.error
+        : `Request failed with ${response.status}`;
     throw new Error(message);
   }
 
   return payload;
+}
+
+/** Resolves after the delay, or immediately when the signal aborts. */
+function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(finish, delayMs);
+    function finish() {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }
+    signal?.addEventListener("abort", finish, { once: true });
+  });
 }
 
 function isLiveSessionResponse(value: unknown): value is LiveSessionResponse {

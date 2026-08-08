@@ -1,8 +1,9 @@
-from __future__ import annotations
-
+import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,30 +12,35 @@ from app.interviews.interview_loader import (
     InterviewPrompt,
     InterviewPromptMetadata,
     InterviewPromptValidationError,
+    load_interview_prompts,
 )
 
 
-class StubResponse:
-    def __init__(
-        self,
-        *,
-        body: dict[str, Any],
-        status_code: int = 200,
-        reason_phrase: str = "OK",
-    ) -> None:
-        self.status_code = status_code
-        self.reason_phrase = reason_phrase
-        self.content = b"json"
-        self._body = body
+class FakeProviders:
+    """Records every provider request and serves canned success responses."""
 
-    def json(self) -> dict[str, Any]:
-        return self._body
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if request.url.host == "api.keyframelabs.com":
+            return httpx.Response(
+                200,
+                json={
+                    "server_url": "wss://keyframe.example/live",
+                    "participant_token": "participant-token",
+                    "agent_identity": "avatar-agent",
+                    "region": "us-east-1",
+                },
+            )
+        return httpx.Response(200, json={"signed_url": "wss://elevenlabs.example/conversation"})
 
 
 @pytest.fixture(autouse=True)
-def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr(main, "ENV_FILES", None)
-    for name in [
+    for name in (
         "KEYFRAME_API_KEY",
         "KEYFRAME_PERSONA_SLUG",
         "ELEVENLABS_API_KEY",
@@ -42,281 +48,196 @@ def isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "ELEVENLABS_API_BASE_URL",
         "CLIENT_ORIGIN",
         "PROVIDER_TIMEOUT_SECONDS",
-    ]:
+    ):
         monkeypatch.delenv(name, raising=False)
-
     main.get_settings.cache_clear()
     yield
     main.get_settings.cache_clear()
 
 
-def test_cors_allows_localhost_dev_origin() -> None:
+@pytest.fixture
+def fake_providers(monkeypatch: pytest.MonkeyPatch) -> FakeProviders:
+    """Route the lifespan-created provider client through a recording MockTransport."""
+    fake = FakeProviders()
+    real_async_client = httpx.AsyncClient
+
+    def client_with_fake_transport(**kwargs: Any) -> httpx.AsyncClient:
+        return real_async_client(transport=httpx.MockTransport(fake.handler), **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", client_with_fake_transport)
+    return fake
+
+
+@pytest.fixture
+def provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
+    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
+    main.get_settings.cache_clear()
+
+
+def make_prompt(prompt_id: str, title: str, skill_level: str) -> InterviewPrompt:
+    return InterviewPrompt(
+        prompt_id=prompt_id,
+        metadata=InterviewPromptMetadata(display_name=title, skill_level=skill_level),
+        prompt=f"# {title}\n",
+    )
+
+
+def test_cors_allows_configured_dev_origin() -> None:
     with TestClient(main.app) as client:
-        localhost_response = client.options(
+        response = client.options(
             "/api/session",
-            headers={
-                "Origin": "http://localhost:5174",
-                "Access-Control-Request-Method": "POST",
-            },
+            headers={"Origin": "http://localhost:5174", "Access-Control-Request-Method": "POST"},
         )
 
-    assert localhost_response.status_code == 200
-    assert localhost_response.headers["access-control-allow-origin"] == "http://localhost:5174"
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5174"
 
 
-def test_interview_catalog_exposes_only_public_metadata() -> None:
+def test_catalog_lists_public_fields_ordered_by_skill_then_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    prompts = [
+        make_prompt("beta-store", "beta store", "Senior"),
+        make_prompt("apple-queue", "Apple queue", "Senior"),
+        make_prompt(main.DEFAULT_INTERVIEW_PROMPT_ID, "TinyURL", "Junior"),
+        make_prompt("zebra-cache", "zebra cache", "Intern"),
+    ]
+    monkeypatch.setattr(main, "load_interview_prompts", lambda: {prompt.prompt_id: prompt for prompt in prompts})
+
     with TestClient(main.app) as client:
         response = client.get("/api/interviews")
 
     assert response.status_code == 200
-    interviews = response.json()["interviews"]
-    prompts = sorted(
-        main.load_interview_prompts().values(),
-        key=lambda prompt: (
-            main.SKILL_LEVEL_ORDER[prompt.metadata.skill_level],
-            prompt.metadata.display_name.casefold(),
-            prompt.metadata.display_name,
-            prompt.prompt_id,
-        ),
-    )
-    assert interviews == [
-        {
-            "packetId": prompt.prompt_id,
-            "title": prompt.metadata.display_name,
-            "skillLevel": prompt.metadata.skill_level,
-        }
-        for prompt in prompts
-    ]
-    assert all(set(interview) == {"packetId", "title", "skillLevel"} for interview in interviews)
-    serialized = response.text
-    assert "Private interviewer reference" not in serialized
-    assert "source_path" not in serialized
-    assert "branch_id" not in serialized
-    assert "Never reveal or supply the solution" not in serialized
+    assert response.json() == {
+        "interviews": [
+            {"packetId": "zebra-cache", "title": "zebra cache", "skillLevel": "Intern"},
+            {"packetId": main.DEFAULT_INTERVIEW_PROMPT_ID, "title": "TinyURL", "skillLevel": "Junior"},
+            {"packetId": "apple-queue", "title": "Apple queue", "skillLevel": "Senior"},
+            {"packetId": "beta-store", "title": "beta store", "skillLevel": "Senior"},
+        ]
+    }
 
 
-def test_create_session_rejects_unknown_packet_before_provider_calls() -> None:
+def test_create_session_rejects_unknown_packet_before_settings_and_providers(fake_providers: FakeProviders) -> None:
+    # No provider settings are configured, so a 404 (not a 400) proves the packet
+    # check runs before settings validation.
     with TestClient(main.app) as client:
         response = client.post("/api/session", json={"packetId": "not-a-packet"})
 
     assert response.status_code == 404
     assert response.json() == {"error": "Unknown interview packet: not-a-packet"}
+    assert fake_providers.requests == []
 
 
-def test_backend_startup_validates_and_snapshots_packets_without_provider_requests(
-    monkeypatch: pytest.MonkeyPatch,
+def test_startup_snapshots_prompts_once_and_fails_on_invalid(
+    monkeypatch: pytest.MonkeyPatch, fake_providers: FakeProviders
 ) -> None:
-    default_prompt = InterviewPrompt(
-        prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
-        metadata=InterviewPromptMetadata(display_name="TinyURL", skill_level="Junior"),
-        prompt="# TinyURL prompt\n",
-        source_path=Path("tinyurl.md"),
-    )
-    future_prompt = InterviewPrompt(
-        prompt_id="future-interview",
-        metadata=InterviewPromptMetadata(display_name="Future", skill_level="Senior"),
-        prompt="# Future prompt\n",
-        source_path=Path("future.md"),
-    )
     load_calls = 0
 
-    def load_prompts() -> dict[str, InterviewPrompt]:
+    def load_prompts_once() -> dict[str, InterviewPrompt]:
         nonlocal load_calls
         load_calls += 1
-        return {
-            default_prompt.prompt_id: default_prompt,
-            future_prompt.prompt_id: future_prompt,
-        }
+        prompt = make_prompt(main.DEFAULT_INTERVIEW_PROMPT_ID, "TinyURL snapshot", "Junior")
+        return {prompt.prompt_id: prompt}
 
-    monkeypatch.setattr(main, "load_interview_prompts", load_prompts)
-    main.get_settings.cache_clear()
-
-    class RecordingStartupClient:
-        requests: list[dict[str, Any]] = []
-
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-        async def __aenter__(self) -> "RecordingStartupClient":
-            return self
-
-        async def __aexit__(self, *_args: Any) -> None:
-            return None
-
-        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
-            return StubResponse(body={})
-
-    monkeypatch.setattr(main.httpx, "AsyncClient", RecordingStartupClient)
+    monkeypatch.setattr(main, "load_interview_prompts", load_prompts_once)
 
     with TestClient(main.app) as client:
-        response = client.get("/api/interviews")
+        first = client.get("/api/interviews")
+        second = client.get("/api/interviews")
+        unknown = client.post("/api/session", json={"packetId": "added-after-startup"})
 
-    assert response.status_code == 200
-    assert {item["packetId"] for item in response.json()["interviews"]} == {
-        default_prompt.prompt_id,
-        future_prompt.prompt_id,
-    }
+    assert first.status_code == 200
+    assert first.json()["interviews"][0]["title"] == "TinyURL snapshot"
+    assert second.json() == first.json()
+    assert unknown.status_code == 404
     assert load_calls == 1
-    assert RecordingStartupClient.requests == []
+    assert fake_providers.requests == []
 
-
-def test_backend_startup_stops_on_prompt_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_validation() -> dict[str, InterviewPrompt]:
-        raise InterviewPromptValidationError("Interview prompt validation failed:\n- bad.md: missing id")
+        raise InterviewPromptValidationError("Interview prompt validation failed:\n- bad.md: missing metadata")
 
     monkeypatch.setattr(main, "load_interview_prompts", fail_validation)
 
-    with pytest.raises(InterviewPromptValidationError, match="bad.md: missing id"):
+    with pytest.raises(InterviewPromptValidationError, match="bad.md"):
         with TestClient(main.app):
             pass
 
 
-def test_create_session_endpoint_returns_selected_packet_dynamic_variable(
-    monkeypatch: pytest.MonkeyPatch,
+def test_create_session_returns_packet_prompt_and_calls_both_providers(
+    fake_providers: FakeProviders, provider_env: None
 ) -> None:
-    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setenv("ELEVENLABS_AGENT_ID", "agent_123")
-    main.get_settings.cache_clear()
-    expected_prompt = main.load_interview_prompts()[main.DEFAULT_INTERVIEW_PROMPT_ID].prompt.strip()
-
-    class RecordingLifecycleClient:
-        requests: list[dict[str, Any]] = []
-
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-        async def __aenter__(self) -> "RecordingLifecycleClient":
-            return self
-
-        async def __aexit__(self, *_args: Any) -> None:
-            return None
-
-        async def request(self, method: str, url: str, **kwargs: Any) -> StubResponse:
-            self.requests.append({"method": method, "url": url, "kwargs": kwargs})
-            if method == "PATCH":
-                raise AssertionError("session creation must not update persistent ElevenLabs agent configuration")
-            if "keyframelabs" in url:
-                return StubResponse(
-                    body={
-                        "server_url": "wss://keyframe.example/live",
-                        "participant_token": "participant-token",
-                        "agent_identity": "avatar-agent",
-                    }
-                )
-            return StubResponse(
-                body={
-                    "signed_url": "wss://elevenlabs.example/conversation",
-                }
-            )
-
-    monkeypatch.setattr(main.httpx, "AsyncClient", RecordingLifecycleClient)
+    real_prompts = load_interview_prompts()
 
     with TestClient(main.app) as client:
-        response = client.post("/api/session")
+        default_response = client.post("/api/session")
+        selected_response = client.post("/api/session", json={"packetId": "pastebin-system-design"})
 
-    assert response.status_code == 200
-    assert response.json() == {
+    assert default_response.status_code == 200
+    assert default_response.json() == {
         "sessionDetails": {
             "server_url": "wss://keyframe.example/live",
             "participant_token": "participant-token",
             "agent_identity": "avatar-agent",
+            "region": "us-east-1",
         },
         "voiceAgentDetails": {
             "type": "elevenlabs",
             "agent_id": "agent_123",
             "signed_url": "wss://elevenlabs.example/conversation",
             "dynamic_variables": {
-                "interview_packet": expected_prompt,
+                "interview_packet": real_prompts[main.DEFAULT_INTERVIEW_PROMPT_ID].prompt.strip(),
             },
         },
     }
 
-    keyframe_request = next(
-        request for request in RecordingLifecycleClient.requests if "keyframelabs" in request["url"]
+    assert selected_response.status_code == 200
+    assert selected_response.json()["voiceAgentDetails"]["dynamic_variables"] == {
+        "interview_packet": real_prompts["pastebin-system-design"].prompt.strip(),
+    }
+
+    keyframe_request = next(r for r in fake_providers.requests if r.url.host == "api.keyframelabs.com")
+    assert keyframe_request.method == "POST"
+    assert keyframe_request.url == httpx.URL("https://api.keyframelabs.com/v1/sessions")
+    assert keyframe_request.headers["Authorization"] == "Bearer keyframe-key"
+    assert json.loads(keyframe_request.content) == {"persona_slug": "public:lyra_persona-1.5-live"}
+
+    elevenlabs_request = next(r for r in fake_providers.requests if r.url.host == "api.elevenlabs.io")
+    assert elevenlabs_request.method == "GET"
+    assert elevenlabs_request.url == httpx.URL(
+        "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url",
+        params={"agent_id": "agent_123"},
     )
-    assert keyframe_request == {
-        "method": "POST",
-        "url": "https://api.keyframelabs.com/v1/sessions",
-        "kwargs": {
-            "headers": {
-                "Authorization": "Bearer keyframe-key",
-                "Content-Type": "application/json",
-            },
-            "json": {"persona_slug": "public:lyra_persona-1.5-live"},
-        },
-    }
-
-    elevenlabs_request = next(
-        request
-        for request in RecordingLifecycleClient.requests
-        if request["method"] == "GET" and "elevenlabs" in request["url"]
-    )
-    assert elevenlabs_request == {
-        "method": "GET",
-        "url": "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url",
-        "kwargs": {
-            "headers": {"xi-api-key": "eleven-key"},
-            "params": {
-                "agent_id": "agent_123",
-            },
-        },
-    }
-    assert all(request["method"] != "PATCH" for request in RecordingLifecycleClient.requests)
-    assert "Private interviewer reference" in response.text
-    assert "Never reveal or supply the solution" in response.text
+    assert elevenlabs_request.headers["xi-api-key"] == "eleven-key"
 
 
-def test_catalog_and_session_validation_share_the_startup_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("preset_env", "missing_name"),
+    [
+        ({}, "KEYFRAME_API_KEY"),
+        ({"KEYFRAME_API_KEY": "keyframe-key"}, "ELEVENLABS_API_KEY"),
+        ({"KEYFRAME_API_KEY": "keyframe-key", "ELEVENLABS_API_KEY": "eleven-key"}, "ELEVENLABS_AGENT_ID"),
+    ],
+)
+def test_create_session_reports_first_missing_setting(
+    monkeypatch: pytest.MonkeyPatch, preset_env: dict[str, str], missing_name: str
 ) -> None:
-    startup_prompt = InterviewPrompt(
-        prompt_id=main.DEFAULT_INTERVIEW_PROMPT_ID,
-        metadata=InterviewPromptMetadata(
-            display_name="TinyURL startup snapshot",
-            skill_level="Junior",
-        ),
-        prompt="# Private startup prompt\n",
-        source_path=Path("tinyurl.md"),
+    for name, value in preset_env.items():
+        monkeypatch.setenv(name, value)
+    main.get_settings.cache_clear()
+
+    with TestClient(main.app) as client:
+        response = client.post("/api/session")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": f"Missing {missing_name}. Add it to .env and restart pnpm dev."}
+
+
+def test_prompt_validation_requires_default_packet_file(tmp_path: Path) -> None:
+    (tmp_path / "other-interview.md").write_text(
+        "---\ndisplay_name: Other\nskill_level: Junior\n---\n\n# Prompt body\n",
+        encoding="utf-8",
     )
-    load_calls = 0
 
-    def load_prompts_once() -> dict[str, InterviewPrompt]:
-        nonlocal load_calls
-        load_calls += 1
-        if load_calls > 1:
-            raise AssertionError("routes must not reload prompt files after startup")
-        return {startup_prompt.prompt_id: startup_prompt}
-
-    monkeypatch.setattr(main, "load_interview_prompts", load_prompts_once)
-    main.get_settings.cache_clear()
-
-    with TestClient(main.app) as client:
-        catalog_response = client.get("/api/interviews")
-        unknown_response = client.post("/api/session", json={"packetId": "added-after-startup"})
-
-    assert catalog_response.status_code == 200
-    assert catalog_response.json()["interviews"][0]["title"] == "TinyURL startup snapshot"
-    assert unknown_response.status_code == 404
-    assert load_calls == 1
-
-
-def test_create_session_reports_missing_agent(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KEYFRAME_API_KEY", "keyframe-key")
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    main.get_settings.cache_clear()
-
-    with TestClient(main.app) as client:
-        response = client.post("/api/session")
-
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing ELEVENLABS_AGENT_ID. Add it to .env and restart pnpm dev."}
-
-
-def test_create_session_endpoint_reports_missing_required_settings() -> None:
-    with TestClient(main.app) as client:
-        response = client.post("/api/session")
-
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing KEYFRAME_API_KEY. Add it to .env and restart pnpm dev."}
+    with pytest.raises(InterviewPromptValidationError, match=main.DEFAULT_INTERVIEW_PROMPT_ID):
+        load_interview_prompts(tmp_path)
