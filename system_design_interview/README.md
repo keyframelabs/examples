@@ -66,6 +66,7 @@ Each session passes its selected packet as a conversation-scoped dynamic variabl
 
 ## Learn more
 
+- [Full written guide for this example](https://keyframelabs.com/blog/system-design-interview)
 - [Documentation](https://docs.keyframelabs.com/)
 - [Platform](https://platform.keyframelabs.com)
 - [Website](https://www.keyframelabs.com/)
