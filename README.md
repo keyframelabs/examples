@@ -1,14 +1,15 @@
-# Keyframe Labs Demos
+# Keyframe Labs Examples
 
-Runnable examples for building with Keyframe Labs Human Foundation Models.
+A collection of runnable examples for building with Keyframe Labs' human foundation models.
 
 ## Current demos
 
-- [System Design Interview](system_design_interview/README.md) — A Keyframe avatar and ElevenLabs voice agent for practicing system design.
+- [System Design Interviewer](system_design_interview/README.md)
 
 ## Learn more
 
 - [Documentation](https://docs.keyframelabs.com/)
+- [Platform](https://platform.keyframelabs.com)
 - [Website](https://www.keyframelabs.com/)
 
 ## License
