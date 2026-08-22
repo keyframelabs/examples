@@ -1,0 +1,14 @@
+.env
+node_modules/
+frontend/dist/
+.venv/
+.pnpm-store/
+.pytest_cache/
+.ruff_cache/
+tests/fixtures/openrouter-log.json
+__pycache__/
+*.pyc
+# Preserve existing local logs without tracking their contents.
+logs/
+.vite/
+.codex/readups/
