@@ -1,0 +1,33 @@
+name: Publish to public mirror
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Each run pushes the *current* tip of main, and a newer push cancels older ones,
+# so out-of-order runs can't produce a non-fast-forward.
+concurrency:
+  group: publish-public
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    # This file is mirrored to the public repo too. Never run the job from that copy.
+    if: github.repository == 'keyframelabs/examples-internal'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # checkout otherwise injects GITHUB_TOKEN into every github.com request,
+          # which overrides our PAT and 403s the push.
+          persist-credentials: false
+
+      - name: Push main and tags to keyframelabs/examples
+        env:
+          TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+        run: |
+          # Deliberately no --force: a rejected push means someone wrote to the public repo directly.
+          git push --tags "https://x-access-token:${TOKEN}@github.com/keyframelabs/examples.git" HEAD:refs/heads/main
